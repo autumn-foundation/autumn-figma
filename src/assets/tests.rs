@@ -54,14 +54,17 @@ fn image_fills_are_png() {
     );
     assert_eq!(format_of(&photo), Some(Format::Png));
     assert_eq!(asset_of(&photo).unwrap().file_name, "photo-2-11.png");
-    let hidden = node(
-        r#"{"id":"1","type":"RECTANGLE","fills":[{"type":"IMAGE","visible":false}]}"#,
-    );
+    let hidden =
+        node(r#"{"id":"1","type":"RECTANGLE","fills":[{"type":"IMAGE","visible":false}]}"#);
     assert_eq!(format_of(&hidden), None);
     let container = node(
         r#"{"id":"1","type":"FRAME","fills":[{"type":"IMAGE"}],"children":[{"id":"t","type":"TEXT"}]}"#,
     );
-    assert_eq!(format_of(&container), None, "a container keeps its children");
+    assert_eq!(
+        format_of(&container),
+        None,
+        "a container keeps its children"
+    );
 }
 
 #[test]

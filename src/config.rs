@@ -20,7 +20,10 @@ use std::collections::BTreeMap;
 use std::fmt;
 use std::path::{Path, PathBuf};
 
+use serde::Deserialize;
+
 use crate::error::{Error, ErrorKind, Result};
+use crate::names::is_keyword;
 
 /// The environment variable that holds the Figma personal access token.
 pub const TOKEN_ENV: &str = "FIGMA_TOKEN";
@@ -163,8 +166,13 @@ impl Config {
     /// [`ErrorKind::Io`] when the file cannot be read, and
     /// [`ErrorKind::Config`] when it is not valid.
     pub fn load(path: &Path) -> Result<Self> {
-        let _ = path;
-        Err(Error::new(ErrorKind::Config, "not implemented"))
+        let src = std::fs::read_to_string(path).map_err(|e| Error::io(path, &e))?;
+        let root = match path.parent() {
+            Some(dir) if !dir.as_os_str().is_empty() => dir,
+            _ => Path::new("."),
+        };
+        Self::from_toml_str(&src, root)
+            .map_err(|e| Error::new(e.kind(), format!("{}: {}", path.display(), e.message())))
     }
 
     /// Parse and check `figma.toml` text. `root` is its directory.
@@ -173,8 +181,266 @@ impl Config {
     ///
     /// [`ErrorKind::Config`] when the text is not valid.
     pub fn from_toml_str(src: &str, root: &Path) -> Result<Self> {
-        let _ = (src, root);
-        Err(Error::new(ErrorKind::Config, "not implemented"))
+        let table: toml::Table = toml::from_str(src).map_err(|e| config_err(e.message()))?;
+        if let Some(key) = ["token", "figma_token", "access_token"]
+            .into_iter()
+            .find(|k| table.contains_key(*k))
+        {
+            return Err(config_err(&format!(
+                "remove `{key}`: the token goes only in the {TOKEN_ENV} environment variable"
+            )));
+        }
+        let raw: RawConfig = toml::from_str(src).map_err(|e| config_err(e.message()))?;
+        let file_key = parse_file_key(raw.file_key.as_deref().unwrap_or_default())
+            .map_err(|e| config_err(&format!("file_key: {}", e.message())))?;
+        let path = |name: &str, value: Option<String>, default: &str| -> Result<PathBuf> {
+            let value = value.unwrap_or_else(|| default.to_owned());
+            check_relative(name, &value)?;
+            Ok(root.join(value))
+        };
+        let class_prefix = raw.class_prefix.unwrap_or_else(|| "fg".to_owned());
+        if !is_name(
+            &class_prefix,
+            |c| c.is_ascii_lowercase(),
+            |c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-',
+        ) {
+            return Err(config_err(&format!(
+                "class_prefix {class_prefix:?}: use lowercase letters, digits, and `-`, and start with a letter"
+            )));
+        }
+        let assets_url = raw.assets_url.unwrap_or_else(|| "/static/figma".to_owned());
+        check_assets_url(&assets_url)?;
+        for (name, property) in &raw.tokens {
+            if !is_custom_property(property) {
+                return Err(config_err(&format!(
+                    "token {name:?} maps to {property:?}: use a CSS custom property name such as --primary"
+                )));
+            }
+        }
+        let binds = raw
+            .bind
+            .into_iter()
+            .map(RawBinding::check)
+            .collect::<Result<Vec<_>>>()?;
+        Ok(Self {
+            file_key,
+            root: root.to_path_buf(),
+            snapshot: path("snapshot", raw.snapshot, "figma/snapshot.json")?,
+            variables_snapshot: path(
+                "variables_snapshot",
+                raw.variables_snapshot,
+                "figma/variables.json",
+            )?,
+            out_dir: path("out_dir", raw.out_dir, "src/figma")?,
+            css_path: path("css_path", raw.css_path, "static/css/figma.css")?,
+            assets_dir: path("assets_dir", raw.assets_dir, "static/figma")?,
+            assets_url: assets_url.trim_end_matches('/').to_owned(),
+            pages: raw.pages,
+            class_prefix,
+            tokens: raw.tokens,
+            binds,
+        })
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawConfig {
+    file_key: Option<String>,
+    snapshot: Option<String>,
+    variables_snapshot: Option<String>,
+    out_dir: Option<String>,
+    css_path: Option<String>,
+    assets_dir: Option<String>,
+    assets_url: Option<String>,
+    #[serde(default)]
+    pages: Vec<String>,
+    class_prefix: Option<String>,
+    #[serde(default)]
+    tokens: BTreeMap<String, String>,
+    #[serde(default)]
+    bind: Vec<RawBinding>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawBinding {
+    path: Option<String>,
+    node: Option<String>,
+    tag: Option<String>,
+    id: Option<String>,
+    #[serde(default)]
+    attrs: BTreeMap<String, String>,
+    slot: Option<String>,
+    text: Option<String>,
+}
+
+impl RawBinding {
+    fn check(self) -> Result<Binding> {
+        let selector = match (self.path, self.node) {
+            (Some(path), None) => {
+                let parts: Vec<String> = path.split('>').map(|p| p.trim().to_owned()).collect();
+                if parts.iter().any(String::is_empty) {
+                    return Err(config_err(&format!(
+                        "[[bind]] path {path:?} has an empty part; write `Page > Frame > Layer`"
+                    )));
+                }
+                Selector::Path(parts)
+            }
+            (None, Some(node)) => {
+                if node.is_empty() || node.chars().any(char::is_whitespace) {
+                    return Err(config_err(&format!(
+                        "[[bind]] node {node:?} is not a node id"
+                    )));
+                }
+                Selector::Node(node)
+            }
+            (None, None) => return Err(config_err("a [[bind]] needs `path` or `node`")),
+            (Some(_), Some(_)) => {
+                return Err(config_err("a [[bind]] takes only one of `path` and `node`"));
+            }
+        };
+        let at = selector.to_string();
+        if self.tag.is_none()
+            && self.id.is_none()
+            && self.attrs.is_empty()
+            && self.slot.is_none()
+            && self.text.is_none()
+        {
+            return Err(config_err(&format!(
+                "[[bind]] {at} does nothing; set tag, id, attrs, slot, or text"
+            )));
+        }
+        if let Some(tag) = &self.tag
+            && !TAGS.contains(&tag.as_str())
+        {
+            return Err(config_err(&format!(
+                "[[bind]] {at}: tag {tag:?} is not allowed; use one of {}",
+                TAGS.join(", ")
+            )));
+        }
+        if let Some(id) = &self.id
+            && !is_name(
+                id,
+                |c| c.is_ascii_alphabetic(),
+                |c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | ':' | '.'),
+            )
+        {
+            return Err(config_err(&format!(
+                "[[bind]] {at}: id {id:?} is not a valid HTML id"
+            )));
+        }
+        for name in self.attrs.keys() {
+            check_attr_name(&at, name)?;
+        }
+        if self.slot.is_some() && self.text.is_some() {
+            return Err(config_err(&format!(
+                "[[bind]] {at}: set slot or text, not both"
+            )));
+        }
+        for (key, param) in [("slot", &self.slot), ("text", &self.text)] {
+            if let Some(param) = param
+                && !is_param(param)
+            {
+                return Err(config_err(&format!(
+                    "[[bind]] {at}: {key} {param:?} must be a snake_case Rust name that is not a keyword or `attrs`"
+                )));
+            }
+        }
+        Ok(Binding {
+            selector,
+            tag: self.tag,
+            id: self.id,
+            attrs: self.attrs,
+            slot: self.slot,
+            text: self.text,
+        })
+    }
+}
+
+fn config_err(message: &str) -> Error {
+    Error::new(ErrorKind::Config, message.trim())
+}
+
+/// True when `s` is not empty, its first char passes `first`, and all
+/// chars pass `rest`.
+fn is_name(s: &str, first: impl Fn(char) -> bool, rest: impl Fn(char) -> bool) -> bool {
+    s.chars().next().is_some_and(&first) && s.chars().all(|c| first(c) || rest(c))
+}
+
+fn is_param(name: &str) -> bool {
+    is_name(
+        name,
+        |c| c.is_ascii_lowercase() || c == '_',
+        |c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_',
+    ) && !is_keyword(name)
+        && name != "attrs"
+}
+
+fn is_custom_property(name: &str) -> bool {
+    name.len() > 2
+        && name.starts_with("--")
+        && name[2..]
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+}
+
+fn check_attr_name(at: &str, name: &str) -> Result<()> {
+    let valid = is_name(
+        name,
+        |c| c.is_ascii_lowercase() || matches!(c, '_' | ':' | '@'),
+        |c| {
+            c.is_ascii_lowercase() || c.is_ascii_digit() || matches!(c, '-' | '_' | ':' | '.' | '@')
+        },
+    );
+    if !valid {
+        return Err(config_err(&format!(
+            "[[bind]] {at}: attribute name {name:?} is not valid; use lowercase letters, digits, and - _ : . @"
+        )));
+    }
+    match name {
+        "style" => Err(config_err(&format!(
+            "[[bind]] {at}: attribute \"style\" is not allowed; inline styles break a strict Content-Security-Policy"
+        ))),
+        "class" => Err(config_err(&format!(
+            "[[bind]] {at}: attribute \"class\" is not allowed; the generator owns classes"
+        ))),
+        "id" => Err(config_err(&format!(
+            "[[bind]] {at}: attribute \"id\" is not allowed in attrs; use the `id` key"
+        ))),
+        _ => Ok(()),
+    }
+}
+
+fn check_relative(name: &str, value: &str) -> Result<()> {
+    let path = Path::new(value);
+    let ok = !value.is_empty()
+        && path.components().all(|c| {
+            matches!(
+                c,
+                std::path::Component::Normal(_) | std::path::Component::CurDir
+            )
+        });
+    if ok {
+        Ok(())
+    } else {
+        Err(config_err(&format!(
+            "{name} {value:?} must be a relative path inside the app, without `..`"
+        )))
+    }
+}
+
+fn check_assets_url(url: &str) -> Result<()> {
+    let prefix = url.starts_with('/') || url.starts_with("https://") || url.starts_with("http://");
+    let bad = url
+        .chars()
+        .any(|c| c.is_whitespace() || c.is_control() || "\"'()<>\\`".contains(c));
+    if prefix && !bad {
+        Ok(())
+    } else {
+        Err(config_err(&format!(
+            "assets_url {url:?} must start with `/` or `http(s)://` and have no spaces, quotes, or brackets"
+        )))
     }
 }
 
@@ -188,8 +454,36 @@ impl Config {
 /// [`ErrorKind::Config`] when no key is found or the key has characters
 /// other than ASCII letters and digits.
 pub fn parse_file_key(input: &str) -> Result<String> {
-    let _ = input;
-    Err(Error::new(ErrorKind::Config, "not implemented"))
+    let input = input.trim();
+    let key = if input.contains("figma.com/") {
+        let path = input.split("figma.com/").nth(1).unwrap_or_default();
+        let path = path.split(['?', '#']).next().unwrap_or_default();
+        let parts: Vec<&str> = path.split('/').filter(|p| !p.is_empty()).collect();
+        match parts.as_slice() {
+            [kind, _, "branch", branch, ..] if is_file_kind(kind) => *branch,
+            [kind, key, ..] if is_file_kind(kind) => *key,
+            _ => "",
+        }
+    } else {
+        input
+    };
+    if !key.is_empty() && key.chars().all(|c| c.is_ascii_alphanumeric()) {
+        Ok(key.to_owned())
+    } else if input.is_empty() {
+        Err(Error::new(
+            ErrorKind::Config,
+            "the file key is missing; copy it from the Figma URL (figma.com/design/<key>/...)",
+        ))
+    } else {
+        Err(Error::new(
+            ErrorKind::Config,
+            format!("{input:?} is not a Figma file key or file URL"),
+        ))
+    }
+}
+
+fn is_file_kind(segment: &str) -> bool {
+    matches!(segment, "design" | "file" | "proto" | "board" | "make")
 }
 
 /// A Figma access token. `Debug` does not show it.
@@ -222,8 +516,15 @@ impl fmt::Debug for Token {
 ///
 /// [`ErrorKind::Auth`] when `FIGMA_TOKEN` is not set or is blank.
 pub fn token_from(lookup: &dyn Fn(&str) -> Option<String>) -> Result<Token> {
-    let _ = lookup;
-    Err(Error::new(ErrorKind::Auth, "not implemented"))
+    match lookup(TOKEN_ENV) {
+        Some(token) if !token.trim().is_empty() => Ok(Token::new(token.trim().to_owned())),
+        _ => Err(Error::new(
+            ErrorKind::Auth,
+            format!(
+                "{TOKEN_ENV} is not set; make a personal access token in Figma (Settings > Security) with file read scopes, then export {TOKEN_ENV}"
+            ),
+        )),
+    }
 }
 
 /// Read the API base URL through `lookup`. Default [`DEFAULT_API_BASE`].
@@ -232,15 +533,55 @@ pub fn token_from(lookup: &dyn Fn(&str) -> Option<String>) -> Result<Token> {
 ///
 /// [`ErrorKind::Config`] when the value is not an `http` or `https` URL.
 pub fn api_base_from(lookup: &dyn Fn(&str) -> Option<String>) -> Result<String> {
-    let _ = lookup;
-    Err(Error::new(ErrorKind::Config, "not implemented"))
+    let base = lookup(API_BASE_ENV).unwrap_or_else(|| DEFAULT_API_BASE.to_owned());
+    let base = base.trim().trim_end_matches('/');
+    if base.starts_with("https://") || base.starts_with("http://") {
+        Ok(base.to_owned())
+    } else {
+        Err(Error::new(
+            ErrorKind::Config,
+            format!("{API_BASE_ENV} {base:?} must be an http or https URL"),
+        ))
+    }
 }
 
 /// A starter `figma.toml` for `file_key`.
 #[must_use]
 pub fn starter_toml(file_key: &str) -> String {
-    let _ = file_key;
-    String::new()
+    format!(
+        r##"# autumn-figma: Figma design to Maud components.
+# The token never goes here. Export FIGMA_TOKEN before `autumn-figma pull`.
+
+# The file key, or the full Figma URL of the file.
+file_key = "{file_key}"
+
+# The pages to generate. Remove the line to generate all pages.
+# pages = ["Components", "Screens"]
+
+# Output paths, relative to this file. These are the defaults.
+# out_dir = "src/figma"
+# css_path = "static/css/figma.css"
+# assets_dir = "static/figma"
+# assets_url = "/static/figma"
+# class_prefix = "fg"
+
+# Rename Figma variables or styles to CSS custom properties.
+# Map the brand color to Autumn's token, so Autumn widgets match too.
+[tokens]
+# "color/brand/primary" = "--primary"
+
+# Add behavior to a layer. Path is `Page > Frame > Layer`, or use `node = "1:2"`.
+# [[bind]]
+# path = "Screens > Todos > New todo"
+# tag = "form"
+# attrs = {{ "hx-post" = "/todos", "hx-target" = "#todo-list", "hx-swap" = "beforeend" }}
+#
+# [[bind]]
+# path = "Screens > Todos > List"
+# id = "todo-list"
+# slot = "items"   # replace the children with a `Markup` parameter
+"##
+    )
 }
 
 #[cfg(test)]

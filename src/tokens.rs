@@ -10,9 +10,13 @@
 
 use std::collections::BTreeMap;
 
+use std::fmt::Write as _;
+
+use serde_json::Value;
+
 use crate::diagnostics::Diagnostic;
-use crate::model::{Color, VariablesResponse};
-use crate::names::Allocator;
+use crate::model::{Color, Variable, VariableType, VariablesResponse, alias_id};
+use crate::names::{Allocator, css_str, num, px, slug};
 
 /// The token set of one generation run.
 #[derive(Debug, Clone, Default)]
@@ -37,19 +41,127 @@ impl TokenSet {
         renames: &BTreeMap<String, String>,
         diagnostics: &mut Vec<Diagnostic>,
     ) -> Self {
-        let _ = (variables, diagnostics);
-        Self {
+        let mut set = Self {
             names: Allocator::new("-"),
             renames: renames.clone(),
             ..Self::default()
+        };
+        for target in renames.values() {
+            set.names.reserve(target);
+        }
+        if let Some(vars) = variables {
+            set.add_variables(vars, diagnostics);
+        }
+        set
+    }
+
+    fn add_variables(&mut self, vars: &VariablesResponse, diagnostics: &mut Vec<Diagnostic>) {
+        let collections = &vars.meta.variable_collections;
+        let mut sorted: Vec<&Variable> = vars
+            .meta
+            .variables
+            .values()
+            .filter(|v| {
+                v.resolved_type != VariableType::Boolean && v.resolved_type != VariableType::Other
+            })
+            .collect();
+        let collection_name = |v: &Variable| {
+            collections
+                .get(&v.variable_collection_id)
+                .map_or("", |c| c.name.as_str())
+        };
+        sorted.sort_by(|a, b| {
+            (collection_name(a), &a.name, &a.id).cmp(&(collection_name(b), &b.name, &b.id))
+        });
+        for var in &sorted {
+            let name = self.renames.get(&var.name).cloned().unwrap_or_else(|| {
+                let base = format!("--{}", slug(&var.name));
+                self.names.claim(&base)
+            });
+            self.variables.insert(var.id.clone(), name);
+        }
+        for var in sorted {
+            let name = self.variables[&var.id].clone();
+            let collection = collections.get(&var.variable_collection_id);
+            let default_mode = collection.map_or_else(
+                || {
+                    var.values_by_mode
+                        .keys()
+                        .next()
+                        .cloned()
+                        .unwrap_or_default()
+                },
+                |c| c.default_mode_id.clone(),
+            );
+            // The default mode goes first, so later modes can skip equal values.
+            let mut modes: Vec<(String, String)> = collection.map_or_else(
+                || vec![(default_mode.clone(), String::new())],
+                |c| {
+                    c.modes
+                        .iter()
+                        .map(|m| (m.mode_id.clone(), m.name.clone()))
+                        .collect()
+                },
+            );
+            modes.sort_by_key(|(id, _)| *id != default_mode);
+            let mut default_value = None;
+            for (mode_id, mode_name) in modes {
+                let Some(raw) = var.values_by_mode.get(&mode_id) else {
+                    continue;
+                };
+                let Some(value) = self.value(var, raw) else {
+                    diagnostics.push(Diagnostic::warning(
+                        format!("variables > {}", var.name),
+                        format!(
+                            "mode {mode_name:?} has a value that is not usable in CSS (for example an alias to {}); the declaration is skipped",
+                            alias_id(raw).unwrap_or("an unknown variable")
+                        ),
+                    ));
+                    continue;
+                };
+                if mode_id == default_mode {
+                    default_value = Some(value.clone());
+                    self.root.push((name.clone(), value));
+                } else if default_value.as_ref() != Some(&value) {
+                    self.modes
+                        .entry(slug(&mode_name))
+                        .or_default()
+                        .push((name.clone(), value));
+                }
+            }
+        }
+    }
+
+    /// The CSS value of one variable value, or `None` when it has none.
+    fn value(&self, var: &Variable, raw: &Value) -> Option<String> {
+        if let Some(target) = alias_id(raw) {
+            return self.variables.get(target).map(|n| format!("var({n})"));
+        }
+        match var.resolved_type {
+            VariableType::Color => {
+                let color: Color = serde_json::from_value(raw.clone()).ok()?;
+                Some(css_color(&color, 1.0))
+            }
+            VariableType::Float => {
+                let n = raw.as_f64()?;
+                let scoped = |s: &str| var.scopes.iter().any(|x| x == s);
+                if scoped("OPACITY") {
+                    Some(num(if n > 1.0 { n / 100.0 } else { n }))
+                } else if scoped("FONT_WEIGHT") {
+                    Some(num(n))
+                } else {
+                    Some(px(n))
+                }
+            }
+            VariableType::String => raw.as_str().map(css_str),
+            VariableType::Boolean | VariableType::Other => None,
         }
     }
 
     /// `var(--name)` for a variable id, if the set has it.
     #[must_use]
     pub fn variable(&self, id: &str) -> Option<String> {
-        let _ = id;
-        None
+        self.variables.get(id).map(|n| format!("var({n})"))
     }
 
     /// `var(--name)` for a style. The first call for a style id sets its
@@ -61,8 +173,17 @@ impl TokenSet {
         style_name: &str,
         value: impl FnOnce() -> Option<String>,
     ) -> Option<String> {
-        let _ = (style_id, style_name, value);
-        None
+        if let Some(name) = self.styles.get(style_id) {
+            return Some(format!("var({name})"));
+        }
+        let value = value()?;
+        let name = self.renames.get(style_name).cloned().unwrap_or_else(|| {
+            let base = format!("--{}", slug(style_name));
+            self.names.claim(&base)
+        });
+        self.root.push((name.clone(), value));
+        self.styles.insert(style_id.to_owned(), name.clone());
+        Some(format!("var({name})"))
     }
 
     /// True when the set has no declarations.
@@ -74,15 +195,50 @@ impl TokenSet {
     /// The CSS text: `:root`, then one block per mode.
     #[must_use]
     pub fn css(&self) -> String {
-        String::new()
+        if self.is_empty() {
+            return String::new();
+        }
+        let mut out = String::new();
+        block(&mut out, ":root", &self.root, "");
+        for (mode, decls) in &self.modes {
+            out.push('\n');
+            block(&mut out, &format!("[data-theme=\"{mode}\"]"), decls, "");
+        }
+        for (mode, decls) in self.modes.iter().filter(|(m, _)| m.contains("dark")) {
+            let _ = mode;
+            out.push_str("\n@media (prefers-color-scheme: dark) {\n");
+            block(&mut out, ":root:not([data-theme])", decls, "  ");
+            out.push_str("}\n");
+        }
+        out
     }
+}
+
+/// Write one rule block with `indent` before each line.
+fn block(out: &mut String, selector: &str, decls: &[(String, String)], indent: &str) {
+    let _ = writeln!(out, "{indent}{selector} {{");
+    for (name, value) in decls {
+        let _ = writeln!(out, "{indent}  {name}: {value};");
+    }
+    let _ = writeln!(out, "{indent}}}");
 }
 
 /// A CSS color: `#rrggbb`, or `rgba(...)` when alpha × `opacity` < 1.
 #[must_use]
 pub fn css_color(color: &Color, opacity: f64) -> String {
-    let _ = (color, opacity);
-    String::new()
+    let channel = |v: f64| {
+        // The clamp keeps the value in 0..=255, so the cast is exact.
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+        let byte = (v.clamp(0.0, 1.0) * 255.0).round() as u8;
+        byte
+    };
+    let (r, g, b) = (channel(color.r), channel(color.g), channel(color.b));
+    let alpha = (color.a * opacity).clamp(0.0, 1.0);
+    if alpha >= 0.995 {
+        format!("#{r:02x}{g:02x}{b:02x}")
+    } else {
+        format!("rgba({r}, {g}, {b}, {})", num(alpha))
+    }
 }
 
 #[cfg(test)]

@@ -617,7 +617,6 @@ pub struct ComponentProperty {
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct VariablesResponse {
     /// The payload.
-    #[serde(default)]
     pub meta: VariablesMeta,
 }
 
@@ -739,8 +738,26 @@ pub struct ImagesResponse {
 ///
 /// [`ErrorKind::Json`] when the body is not JSON.
 pub fn normalize_json(body: &[u8]) -> Result<String> {
-    let _ = body;
-    Err(Error::new(ErrorKind::Json, "not implemented"))
+    let value: Value = serde_json::from_slice(body)
+        .map_err(|e| Error::new(ErrorKind::Json, format!("response body: {e}")))?;
+    let mut text = serde_json::to_string_pretty(&sorted(value))
+        .map_err(|e| Error::new(ErrorKind::Json, format!("response body: {e}")))?;
+    text.push('\n');
+    Ok(text)
+}
+
+/// Sort object keys at every depth. This does not depend on the
+/// `preserve_order` feature of `serde_json`.
+fn sorted(value: Value) -> Value {
+    match value {
+        Value::Object(map) => {
+            let entries: BTreeMap<String, Value> =
+                map.into_iter().map(|(k, v)| (k, sorted(v))).collect();
+            Value::Object(entries.into_iter().collect())
+        }
+        Value::Array(items) => Value::Array(items.into_iter().map(sorted).collect()),
+        other => other,
+    }
 }
 
 #[cfg(test)]

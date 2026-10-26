@@ -27,9 +27,15 @@ fn bin(dir: &Path, args: &[&str]) -> std::process::Output {
 fn check_exit_codes() {
     let dir = tempfile::tempdir().unwrap();
     copy_fixture(dir.path());
-    assert_eq!(bin(dir.path(), &["generate", "--check"]).status.code(), Some(2));
+    assert_eq!(
+        bin(dir.path(), &["generate", "--check"]).status.code(),
+        Some(2)
+    );
     assert_eq!(bin(dir.path(), &["generate"]).status.code(), Some(0));
-    assert_eq!(bin(dir.path(), &["generate", "--check"]).status.code(), Some(0));
+    assert_eq!(
+        bin(dir.path(), &["generate", "--check"]).status.code(),
+        Some(0)
+    );
     let pull = bin(dir.path(), &["pull"]);
     assert_eq!(pull.status.code(), Some(1));
     assert!(String::from_utf8_lossy(&pull.stderr).contains("FIGMA_TOKEN"));

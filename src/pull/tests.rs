@@ -48,7 +48,10 @@ async fn pull_writes_normalized_snapshots_for_selected_pages() {
     let stub = stub(true).await;
     let report = pull(&config, &client(&stub)).await.unwrap();
     assert_eq!(report.snapshot, dir.path().join("figma/snapshot.json"));
-    assert_eq!(report.variables, Some(dir.path().join("figma/variables.json")));
+    assert_eq!(
+        report.variables,
+        Some(dir.path().join("figma/variables.json"))
+    );
     let written = fs::read_to_string(&report.snapshot).unwrap();
     assert_eq!(written, normalize_json(SNAPSHOT.as_bytes()).unwrap());
     let seen = stub.seen();
@@ -100,7 +103,10 @@ async fn assets_are_downloaded_in_batches_without_the_token() {
     let (dir, config) = app(CONFIG);
     let stub = stub(true).await;
     let report = pull(&config, &client(&stub)).await.unwrap();
-    assert_eq!(report.assets, [dir.path().join("static/figma/icon-check-1-30.svg")]);
+    assert_eq!(
+        report.assets,
+        [dir.path().join("static/figma/icon-check-1-30.svg")]
+    );
     assert!(
         report.notices.iter().any(|n| n.contains("2:11")),
         "{:?}",
@@ -109,10 +115,7 @@ async fn assets_are_downloaded_in_batches_without_the_token() {
     let seen = stub.seen();
     let cdn = seen.iter().find(|s| s.path == "/cdn/icon.svg").unwrap();
     assert_eq!(cdn.token, None, "no token to the CDN");
-    assert_eq!(
-        fs::read(&report.assets[0]).unwrap(),
-        b"bytes of icon.svg"
-    );
+    assert_eq!(fs::read(&report.assets[0]).unwrap(), b"bytes of icon.svg");
     let svg = seen
         .iter()
         .find(|s| s.path.starts_with("/v1/images") && s.query["format"] == "svg")

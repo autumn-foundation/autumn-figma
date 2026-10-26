@@ -15,6 +15,12 @@ use std::path::{Path, PathBuf};
 
 use clap::{Parser, Subcommand};
 
+use crate::client::FigmaClient;
+use crate::config::{self, Config};
+use crate::error::{Error, ErrorKind, Result};
+use crate::generate::{self, Drift};
+use crate::pull::{self, PullReport};
+
 /// Success.
 pub const EXIT_OK: i32 = 0;
 /// An error.
@@ -44,7 +50,7 @@ pub enum Command {
         #[arg(long)]
         file_key: Option<String>,
     },
-    /// Fetch the design snapshot and assets. Needs FIGMA_TOKEN.
+    /// Fetch the design snapshot and assets. Needs `FIGMA_TOKEN`.
     Pull,
     /// Generate Rust and CSS from the snapshot. Works offline.
     Generate {
@@ -67,8 +73,171 @@ pub fn run(
     out: &mut dyn Write,
     err: &mut dyn Write,
 ) -> i32 {
-    let _ = (args.into_iter().count(), env, cwd, out, err);
-    EXIT_ERROR
+    let cli = match Cli::try_parse_from(args) {
+        Ok(cli) => cli,
+        Err(e) => {
+            use clap::error::ErrorKind as Clap;
+            let text = e.render().to_string();
+            return if matches!(e.kind(), Clap::DisplayHelp | Clap::DisplayVersion) {
+                let _ = write!(out, "{text}");
+                EXIT_OK
+            } else {
+                let _ = write!(err, "{text}");
+                EXIT_ERROR
+            };
+        }
+    };
+    let config_path = cwd.join(&cli.config);
+    let mut io = Io { out, err };
+    let result = match cli.command {
+        Command::Init { file_key } => init(&config_path, file_key.as_deref(), &mut io),
+        Command::Pull => load(&config_path).and_then(|c| pull_step(&c, env, &mut io)),
+        Command::Generate { check } => {
+            load(&config_path).and_then(|c| generate_step(&c, check, &mut io))
+        }
+        Command::Sync => load(&config_path).and_then(|c| {
+            pull_step(&c, env, &mut io)?;
+            generate_step(&c, false, &mut io)
+        }),
+    };
+    match result {
+        Ok(code) => code,
+        Err(e) => {
+            io.line_err(&format!("error: {e}"));
+            EXIT_ERROR
+        }
+    }
+}
+
+struct Io<'a> {
+    out: &'a mut dyn Write,
+    err: &'a mut dyn Write,
+}
+
+impl Io<'_> {
+    fn line(&mut self, text: &str) {
+        let _ = writeln!(self.out, "{text}");
+    }
+
+    fn line_err(&mut self, text: &str) {
+        let _ = writeln!(self.err, "{text}");
+    }
+}
+
+/// `path` relative to `root`, with `/` separators.
+fn rel(root: &Path, path: &Path) -> String {
+    let short = path.strip_prefix(root).unwrap_or(path);
+    short
+        .components()
+        .map(|c| c.as_os_str().to_string_lossy())
+        .collect::<Vec<_>>()
+        .join("/")
+}
+
+fn load(path: &Path) -> Result<Config> {
+    if !path.exists() {
+        return Err(Error::new(
+            ErrorKind::Config,
+            format!(
+                "{} not found; run `autumn-figma init --file-key <key or URL>` first, or pass --config",
+                path.display()
+            ),
+        ));
+    }
+    Config::load(path)
+}
+
+fn init(path: &Path, file_key: Option<&str>, io: &mut Io<'_>) -> Result<i32> {
+    if path.exists() {
+        return Err(Error::new(
+            ErrorKind::Config,
+            format!("{} exists; init does not overwrite it", path.display()),
+        ));
+    }
+    let key = match file_key {
+        Some(k) => config::parse_file_key(k)?,
+        None => "PASTE_FILE_KEY_OR_URL".to_owned(),
+    };
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir).map_err(|e| Error::io(dir, &e))?;
+    }
+    std::fs::write(path, config::starter_toml(&key)).map_err(|e| Error::io(path, &e))?;
+    io.line(&format!("wrote {}", path.display()));
+    if file_key.is_none() {
+        io.line("next: set file_key to the key or URL of your Figma file");
+    }
+    io.line(&format!(
+        "next: export {} and run `autumn-figma sync`",
+        config::TOKEN_ENV
+    ));
+    Ok(EXIT_OK)
+}
+
+fn pull_step(
+    config: &Config,
+    env: &dyn Fn(&str) -> Option<String>,
+    io: &mut Io<'_>,
+) -> Result<i32> {
+    let token = config::token_from(env)?;
+    let base = config::api_base_from(env)?;
+    let client = FigmaClient::new(token, &base)?;
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|e| Error::new(ErrorKind::Io, format!("async runtime: {e}")))?;
+    let report: PullReport = runtime.block_on(pull::pull(config, &client))?;
+    io.line(&format!("pulled {}", rel(&config.root, &report.snapshot)));
+    if let Some(vars) = &report.variables {
+        io.line(&format!("pulled {}", rel(&config.root, vars)));
+    }
+    for asset in &report.assets {
+        io.line(&format!("pulled {}", rel(&config.root, asset)));
+    }
+    for notice in &report.notices {
+        io.line_err(&format!("note: {notice}"));
+    }
+    Ok(EXIT_OK)
+}
+
+fn generate_step(config: &Config, check: bool, io: &mut Io<'_>) -> Result<i32> {
+    let output = generate::generate(config)?;
+    for d in &output.diagnostics {
+        io.line_err(&d.to_string());
+    }
+    for asset in output.missing_assets(config) {
+        io.line_err(&format!(
+            "warning: missing asset {}; run `autumn-figma pull`",
+            rel(&config.root, &asset)
+        ));
+    }
+    if check {
+        let drift = output.drift()?;
+        if drift.is_empty() {
+            io.line(&format!("in sync: {} files", output.files.len()));
+            return Ok(EXIT_OK);
+        }
+        for d in &drift {
+            let (what, path) = match d {
+                Drift::Changed(p) => ("changed", p),
+                Drift::Missing(p) => ("missing", p),
+                Drift::Stale(p) => ("stale", p),
+            };
+            io.line_err(&format!("{what}: {}", rel(&config.root, path)));
+        }
+        io.line_err("the generated files differ from the snapshot; run `autumn-figma generate`");
+        return Ok(EXIT_DRIFT);
+    }
+    let report = output.write()?;
+    for path in &report.written {
+        io.line(&format!("wrote {}", rel(&config.root, path)));
+    }
+    for path in &report.deleted {
+        io.line(&format!("deleted {}", rel(&config.root, path)));
+    }
+    if !report.unchanged.is_empty() {
+        io.line(&format!("{} files unchanged", report.unchanged.len()));
+    }
+    Ok(EXIT_OK)
 }
 
 #[cfg(test)]

@@ -38,7 +38,9 @@ fn camel_ident_examples() {
 
 #[test]
 fn keywords() {
-    for word in ["fn", "type", "match", "async", "self", "Self", "crate", "abstract", "gen"] {
+    for word in [
+        "fn", "type", "match", "async", "self", "Self", "crate", "abstract", "gen",
+    ] {
         assert!(is_keyword(word), "{word}");
     }
     assert!(!is_keyword("button"));

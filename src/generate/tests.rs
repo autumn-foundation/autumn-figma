@@ -61,7 +61,12 @@ fn variables_snapshot_is_optional() {
     let (dir, config) = app();
     fs::remove_file(dir.path().join("figma/variables.json")).unwrap();
     let out = generate(&config).unwrap();
-    let css = &out.files.iter().find(|(p, _)| p.ends_with("figma.css")).unwrap().1;
+    let css = &out
+        .files
+        .iter()
+        .find(|(p, _)| p.ends_with("figma.css"))
+        .unwrap()
+        .1;
     assert!(!css.contains("--primary"), "no variables, no primary token");
     assert!(css.contains("--heading-h1"), "styles still give tokens");
 }
@@ -96,21 +101,31 @@ fn drift_finds_changed_and_stale_files() {
     let screens = dir.path().join("src/figma/screens.rs");
     fs::write(&screens, "// edited by hand\n").unwrap();
     let stale = dir.path().join("src/figma/old_page.rs");
-    fs::write(&stale, format!("// {HEADER_MARK} from Figma file X. Do not edit.\n")).unwrap();
+    fs::write(
+        &stale,
+        format!("// {HEADER_MARK} from Figma file X. Do not edit.\n"),
+    )
+    .unwrap();
     let mine = dir.path().join("src/figma/helpers.rs");
     fs::write(&mine, "// my own code\n").unwrap();
 
     let out = generate(&config).unwrap();
     assert_eq!(out.stale, [stale.clone()]);
     let drift = out.drift().unwrap();
-    assert_eq!(drift, [Drift::Changed(screens.clone()), Drift::Stale(stale.clone())]);
+    assert_eq!(
+        drift,
+        [Drift::Changed(screens.clone()), Drift::Stale(stale.clone())]
+    );
 
     let report = out.write().unwrap();
     assert_eq!(report.written, [screens]);
     assert_eq!(report.deleted, [stale.clone()]);
     assert!(!stale.exists());
     assert!(mine.exists(), "files without the header stay");
-    assert!(out.drift().unwrap().is_empty(), "the stale file is gone from disk");
+    assert!(
+        out.drift().unwrap().is_empty(),
+        "the stale file is gone from disk"
+    );
 }
 
 #[test]
@@ -119,7 +134,11 @@ fn missing_assets_are_listed() {
     let out = generate(&config).unwrap();
     assert_eq!(out.missing_assets(&config).len(), 2);
     fs::create_dir_all(dir.path().join("static/figma")).unwrap();
-    fs::write(dir.path().join("static/figma/icon-check-1-30.svg"), "<svg/>").unwrap();
+    fs::write(
+        dir.path().join("static/figma/icon-check-1-30.svg"),
+        "<svg/>",
+    )
+    .unwrap();
     assert_eq!(
         rel(dir.path(), &out.missing_assets(&config)),
         ["static/figma/photo-2-11.png"]

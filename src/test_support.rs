@@ -59,7 +59,11 @@ fn record(shared: &Shared, path: String, query: BTreeMap<String, String>, header
     let token = headers
         .get("x-figma-token")
         .map(|v| v.to_str().unwrap().to_owned());
-    shared.seen.lock().unwrap().push(Seen { path, query, token });
+    shared
+        .seen
+        .lock()
+        .unwrap()
+        .push(Seen { path, query, token });
 }
 
 async fn file(
@@ -70,24 +74,47 @@ async fn file(
 ) -> Response {
     record(&s, format!("/v1/files/{key}"), q.clone(), &headers);
     if let Some(code) = s.script.file_status {
-        let mut res = (StatusCode::from_u16(code).unwrap(), "{\"status\":0,\"err\":\"no\"}").into_response();
+        let mut res = (
+            StatusCode::from_u16(code).unwrap(),
+            "{\"status\":0,\"err\":\"no\"}",
+        )
+            .into_response();
         if let Some(after) = s.script.retry_after {
-            res.headers_mut().insert("retry-after", after.parse().unwrap());
+            res.headers_mut()
+                .insert("retry-after", after.parse().unwrap());
         }
         return res;
     }
     let body = if q.get("depth").map(String::as_str) == Some("1") {
-        s.script.file_depth1.clone().unwrap_or_else(|| s.script.file.clone())
+        s.script
+            .file_depth1
+            .clone()
+            .unwrap_or_else(|| s.script.file.clone())
     } else {
         s.script.file.clone()
     };
     (StatusCode::OK, body).into_response()
 }
 
-async fn variables(State(s): State<Shared>, Path(key): Path<String>, headers: HeaderMap) -> Response {
-    record(&s, format!("/v1/files/{key}/variables/local"), BTreeMap::new(), &headers);
+async fn variables(
+    State(s): State<Shared>,
+    Path(key): Path<String>,
+    headers: HeaderMap,
+) -> Response {
+    record(
+        &s,
+        format!("/v1/files/{key}/variables/local"),
+        BTreeMap::new(),
+        &headers,
+    );
     s.script.variables.clone().map_or_else(
-        || (StatusCode::FORBIDDEN, "{\"status\":403,\"error\":true,\"message\":\"Limited by Figma plan\"}").into_response(),
+        || {
+            (
+                StatusCode::FORBIDDEN,
+                "{\"status\":403,\"error\":true,\"message\":\"Limited by Figma plan\"}",
+            )
+                .into_response()
+        },
         |body| (StatusCode::OK, body).into_response(),
     )
 }

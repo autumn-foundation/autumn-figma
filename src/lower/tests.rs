@@ -72,9 +72,17 @@ fn modules_follow_selected_pages() {
     let l = fixture();
     let names: Vec<_> = l.modules.iter().map(|m| m.name.as_str()).collect();
     assert_eq!(names, ["components", "screens"], "Drafts is not selected");
-    let comps: Vec<_> = l.modules[0].functions.iter().map(|f| f.name.as_str()).collect();
+    let comps: Vec<_> = l.modules[0]
+        .functions
+        .iter()
+        .map(|f| f.name.as_str())
+        .collect();
     assert_eq!(comps, ["button", "icon_check", "todo_row"]);
-    let screens: Vec<_> = l.modules[1].functions.iter().map(|f| f.name.as_str()).collect();
+    let screens: Vec<_> = l.modules[1]
+        .functions
+        .iter()
+        .map(|f| f.name.as_str())
+        .collect();
     assert_eq!(screens, ["todos"]);
 }
 
@@ -85,7 +93,10 @@ fn component_set_becomes_enum_and_match() {
     assert_eq!(e.name, "ButtonSize");
     assert_eq!(
         e.variants,
-        [("Large".into(), "Large".into()), ("Small".into(), "Small".into())]
+        [
+            ("Large".into(), "Large".into()),
+            ("Small".into(), "Small".into())
+        ]
     );
     assert_eq!(e.default, 0);
     let f = func(&l, "components", "button");
@@ -131,7 +142,10 @@ fn icon_component_is_an_image() {
     let img = root(single(f));
     assert_eq!(img.tag, "img");
     assert!(img.root_attrs);
-    assert!(img.attrs.contains(&("src".into(), "/static/figma/icon-check-1-30.svg".into())));
+    assert!(
+        img.attrs
+            .contains(&("src".into(), "/static/figma/icon-check-1-30.svg".into()))
+    );
     assert!(img.attrs.contains(&("alt".into(), String::new())));
     assert!(img.children.is_empty());
 }
@@ -157,7 +171,7 @@ fn todo_row_uses_props_and_calls_the_icon() {
         Item::If {
             cond: "done".into(),
             body: vec![Item::Call(Call {
-                path: "icon_check".into(),
+                path: "super::components::icon_check".into(),
                 args: vec![Arg::Attrs(vec![])],
             })]
         }
@@ -170,7 +184,10 @@ fn screen_applies_bindings() {
     let f = func(&l, "screens", "todos");
     assert_eq!(
         params(f),
-        [("items", &ParamType::Markup), ("remaining", &ParamType::Str)]
+        [
+            ("items", &ParamType::Markup),
+            ("remaining", &ParamType::Str)
+        ]
     );
     let page = root(single(f));
     assert_eq!(page.tag, "div");
@@ -231,10 +248,21 @@ fn screen_applies_bindings() {
     let hero = child_el(page, 4);
     let photo = child_el(hero, 0);
     assert_eq!(photo.tag, "img");
-    assert!(photo.attrs.contains(&("src".into(), "/static/figma/photo-2-11.png".into())));
-    assert_eq!(child_el(hero, 1).children, [Item::Text("Ship it\nToday".into())]);
+    assert!(
+        photo
+            .attrs
+            .contains(&("src".into(), "/static/figma/photo-2-11.png".into()))
+    );
+    assert_eq!(
+        child_el(hero, 1).children,
+        [Item::Text("Ship it\nToday".into())]
+    );
 
-    assert_eq!(page.children.len(), 5, "hidden and unsupported nodes are skipped");
+    assert_eq!(
+        page.children.len(),
+        5,
+        "hidden and unsupported nodes are skipped"
+    );
 }
 
 #[test]
@@ -256,16 +284,35 @@ fn assets_rules_tokens_and_notes() {
     let mut unique = classes.clone();
     unique.sort_unstable();
     unique.dedup();
-    assert_eq!(unique.len(), classes.len(), "classes are unique: {classes:?}");
+    assert_eq!(
+        unique.len(),
+        classes.len(),
+        "classes are unique: {classes:?}"
+    );
     assert!(classes.iter().all(|c| c.starts_with("fg-")));
     let rule = |c: &str| &l.rules.iter().find(|r| r.class == c).unwrap().decls;
-    assert_eq!(rule("fg-button--size-large").get("background-color"), Some("var(--primary)"));
-    assert_eq!(rule("fg-button--size-large").get("gap"), Some("var(--spacing-sm)"));
-    assert_eq!(rule("fg-button--size-large").get("box-shadow"), Some("var(--shadow-card)"));
-    assert_eq!(rule("fg-todos__title").get("font"), Some("var(--heading-h1)"));
+    assert_eq!(
+        rule("fg-button--size-large").get("background-color"),
+        Some("var(--primary)")
+    );
+    assert_eq!(
+        rule("fg-button--size-large").get("gap"),
+        Some("var(--spacing-sm)")
+    );
+    assert_eq!(
+        rule("fg-button--size-large").get("box-shadow"),
+        Some("var(--shadow-card)")
+    );
+    assert_eq!(
+        rule("fg-todos__title").get("font"),
+        Some("var(--heading-h1)")
+    );
     let css = l.tokens.css();
     assert!(css.contains("--primary: #7c3aed;"), "{css}");
-    assert!(css.contains("--heading-h1: 700 32px/40px \"Inter\", system-ui, sans-serif;"), "{css}");
+    assert!(
+        css.contains("--heading-h1: 700 32px/40px \"Inter\", system-ui, sans-serif;"),
+        "{css}"
+    );
 
     let notes: Vec<String> = l.diagnostics.iter().map(ToString::to_string).collect();
     let has = |level: Level, path: &str, text: &str| {
@@ -273,10 +320,26 @@ fn assets_rules_tokens_and_notes() {
             .iter()
             .any(|d| d.level == level && d.path == path && d.message.contains(text))
     };
-    assert!(has(Level::Warning, "Screens > Todos > Hero art", "auto layout"), "{notes:#?}");
-    assert!(has(Level::Info, "Screens > Todos > Map embed", "not supported"), "{notes:#?}");
-    assert!(has(Level::Info, "Screens > Note", "top-level"), "{notes:#?}");
-    assert!(has(Level::Info, "Screens > Todos > New todo > input", "placeholder"), "{notes:#?}");
+    assert!(
+        has(Level::Warning, "Screens > Todos > Hero art", "auto layout"),
+        "{notes:#?}"
+    );
+    assert!(
+        has(Level::Info, "Screens > Todos > Map embed", "not supported"),
+        "{notes:#?}"
+    );
+    assert!(
+        has(Level::Info, "Screens > Note", "top-level"),
+        "{notes:#?}"
+    );
+    assert!(
+        has(
+            Level::Info,
+            "Screens > Todos > New todo > input",
+            "placeholder"
+        ),
+        "{notes:#?}"
+    );
 }
 
 #[test]
@@ -298,7 +361,12 @@ fn missing_page_is_a_config_error() {
 #[test]
 fn unmatched_binding_is_an_error() {
     let file = doc(r#"{"id":"1","name":"Card","type":"FRAME"}"#);
-    let err = lower(&file, None, &cfg("[[bind]]\npath = \"Page > Crad\"\ntag = \"p\"")).unwrap_err();
+    let err = lower(
+        &file,
+        None,
+        &cfg("[[bind]]\npath = \"Page > Crad\"\ntag = \"p\""),
+    )
+    .unwrap_err();
     assert_eq!(err.kind(), ErrorKind::Binding);
     assert!(err.message().contains("Page > Crad"), "{err}");
 }
@@ -344,7 +412,7 @@ fn param_names_are_unique_and_defaults_fill_calls() {
     assert_eq!(
         screen.children[0],
         Item::Call(Call {
-            path: "chip".into(),
+            path: "super::page::chip".into(),
             args: vec![
                 Arg::Str("Yo".into()),
                 Arg::Str("x".into()),
@@ -373,13 +441,12 @@ fn bindings_on_instances() {
     };
     assert_eq!(
         call.args.last().unwrap(),
-        &Arg::Attrs(vec![("id".into(), "c".into()), ("hx_get".into(), "/c".into())])
+        &Arg::Attrs(vec![
+            ("id".into(), "c".into()),
+            ("hx_get".into(), "/c".into())
+        ])
     );
-    for bad in [
-        "tag = \"p\"",
-        "slot = \"s\"",
-        "attrs = { data-x = \"1\" }",
-    ] {
+    for bad in ["tag = \"p\"", "slot = \"s\"", "attrs = { data-x = \"1\" }"] {
         let err = lower(
             &file,
             None,
@@ -410,21 +477,23 @@ fn partial_variant_sets_get_a_fallback() {
     assert_eq!(arms.len(), 2, "the duplicate variant is dropped");
     assert_eq!(arms[1].pattern, ["TagSize::M", "TagTone::Loud"]);
     assert!(fallback.is_some());
-    assert!(l.diagnostics.iter().any(|d| d.message.contains("duplicate")));
+    assert!(
+        l.diagnostics
+            .iter()
+            .any(|d| d.message.contains("duplicate"))
+    );
 }
 
 #[test]
 fn text_bindings_on_components_become_params_for_callers() {
-    let file = doc(
-        r#"{"id":"1","name":"Card","type":"COMPONENT","children":[
+    let file = doc(r#"{"id":"1","name":"Card","type":"COMPONENT","children":[
              {"id":"1:1","name":"Body","type":"TEXT","characters":"Default"},
              {"id":"1:2","name":"Items","type":"FRAME","children":[]}]},
            {"id":"2","name":"Screen","type":"FRAME","children":[
              {"id":"3","name":"Card","type":"INSTANCE","componentId":"1","children":[
                {"id":"I3;1:1","name":"Body","type":"TEXT","characters":"Override"},
                {"id":"I3;1:2","name":"Items","type":"FRAME","children":[
-                 {"id":"I3;1:3","name":"Row","type":"TEXT","characters":"row"}]}]}]}"#,
-    );
+                 {"id":"I3;1:3","name":"Row","type":"TEXT","characters":"row"}]}]}]}"#);
     let l = lower(
         &file,
         None,
@@ -463,7 +532,7 @@ fn hidden_layers_and_name_tags() {
     );
     let l = lower(&file, None, &cfg("")).unwrap();
     let screen = root(single(func(&l, "page", "screen")));
-    assert_eq!(screen.children.len(), 3);
+    assert_eq!(screen.children.len(), 2, "the hidden layer is skipped");
     let button = child_el(screen, 0);
     assert_eq!(button.tag, "button");
     assert_eq!(child_el(button, 0).tag, "h2");
@@ -485,5 +554,8 @@ fn hostile_names_stay_safe() {
     assert_eq!(f.name, "fn_drop");
     assert_eq!(f.params[0].name, "x");
     let el = root(single(f));
-    assert_eq!(child_el(el, 0).children, [Item::Text("<script>alert(1)</script>".into())]);
+    assert_eq!(
+        child_el(el, 0).children,
+        [Item::Text("<script>alert(1)</script>".into())]
+    );
 }

@@ -103,7 +103,10 @@ fn grid_layout() {
         COMPONENT,
     );
     assert_eq!(d.get("display"), Some("grid"));
-    assert_eq!(d.get("grid-template-columns"), Some("repeat(3, minmax(0, 1fr))"));
+    assert_eq!(
+        d.get("grid-template-columns"),
+        Some("repeat(3, minmax(0, 1fr))")
+    );
     assert_eq!(d.get("gap"), Some("16px 8px"));
 }
 
@@ -279,7 +282,11 @@ fn gradients_warn() {
         Role::Box,
     );
     assert_eq!(r.decls.get("background-color"), None);
-    assert!(r.diags.iter().any(|d| d.message.contains("GradientLinear")), "{:?}", r.diags);
+    assert!(
+        r.diags.iter().any(|d| d.message.contains("GradientLinear")),
+        "{:?}",
+        r.diags
+    );
 }
 
 #[test]
@@ -326,7 +333,10 @@ fn text() {
     let d = r.decls;
     assert_eq!(d.get("color"), Some("#ff0000"));
     assert_eq!(d.get("background-color"), None);
-    assert_eq!(d.get("font-family"), Some("\"Inter\", system-ui, sans-serif"));
+    assert_eq!(
+        d.get("font-family"),
+        Some("\"Inter\", system-ui, sans-serif")
+    );
     assert_eq!(d.get("font-weight"), Some("600"));
     assert_eq!(d.get("font-size"), Some("16px"));
     assert_eq!(d.get("line-height"), Some("24px"));

@@ -79,14 +79,20 @@ slot = "items"
         c.binds[2].selector,
         Selector::Path(vec!["Screens".into(), "Todos".into(), "List".into()])
     );
-    assert_eq!(c.binds[0].selector.to_string(), "Screens > Todos > New todo");
+    assert_eq!(
+        c.binds[0].selector.to_string(),
+        "Screens > Todos > New todo"
+    );
 }
 
 #[test]
 fn token_in_file_is_rejected_with_a_hint() {
     let msg = err("file_key = \"A1\"\ntoken = \"figd_secret\"");
     assert!(msg.contains("FIGMA_TOKEN"), "{msg}");
-    assert!(!msg.contains("figd_secret"), "message leaks the token: {msg}");
+    assert!(
+        !msg.contains("figd_secret"),
+        "message leaks the token: {msg}"
+    );
 }
 
 #[test]
@@ -103,7 +109,7 @@ fn bad_values_are_rejected() {
     assert!(err("file_key = \"A1\"\nout_dir = \"/etc\"").contains("out_dir"));
     assert!(err("file_key = \"A1\"\nout_dir = \"../x\"").contains("out_dir"));
     assert!(err("file_key = \"A1\"\nassets_url = \"/a b\"").contains("assets_url"));
-    assert!(err("file_key = \"A1\"\nassets_url = \"x\")\"").contains("assets_url"));
+    assert!(err("file_key = \"A1\"\nassets_url = \"/x)\"").contains("assets_url"));
     assert!(err("file_key = \"A1\"\n[tokens]\n\"a\" = \"primary\"").contains("--"));
     assert!(err("file_key = \"A1\"\n[tokens]\n\"a\" = \"--a;b\"").contains("--a;b"));
 }
@@ -120,7 +126,12 @@ fn bad_bindings_are_rejected() {
     assert!(err(&format!("{base}path = \"A\"\nattrs = {{ style = \"x\" }}")).contains("style"));
     assert!(err(&format!("{base}path = \"A\"\nattrs = {{ class = \"x\" }}")).contains("class"));
     assert!(err(&format!("{base}path = \"A\"\nattrs = {{ id = \"x\" }}")).contains("id"));
-    assert!(err(&format!("{base}path = \"A\"\nattrs = {{ \"a b\" = \"x\" }}")).contains("a b"));
+    assert!(
+        err(&format!(
+            "{base}path = \"A\"\nattrs = {{ \"a b\" = \"x\" }}"
+        ))
+        .contains("a b")
+    );
     assert!(err(&format!("{base}path = \"A\"\nattrs = {{ \"x>\" = \"x\" }}")).contains("x>"));
     assert!(err(&format!("{base}path = \"A\"\nslot = \"Items\"")).contains("Items"));
     assert!(err(&format!("{base}path = \"A\"\nslot = \"type\"")).contains("type"));
@@ -155,7 +166,10 @@ fn file_keys_from_urls() {
         parse_file_key("https://www.figma.com/design/AbC123/My-File?node-id=1-2").unwrap(),
         "AbC123"
     );
-    assert_eq!(parse_file_key("https://figma.com/file/XyZ9/Old").unwrap(), "XyZ9");
+    assert_eq!(
+        parse_file_key("https://figma.com/file/XyZ9/Old").unwrap(),
+        "XyZ9"
+    );
     assert_eq!(
         parse_file_key("https://www.figma.com/design/AbC123/branch/Br4nch/My-File").unwrap(),
         "Br4nch"

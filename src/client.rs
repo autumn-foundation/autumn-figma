@@ -4,6 +4,7 @@
 //! downloads go to the URLs that Figma returns, without the token.
 
 use std::fmt;
+use std::time::Duration;
 
 use crate::assets::Format;
 use crate::config::Token;
@@ -34,8 +35,70 @@ impl FigmaClient {
     ///
     /// [`ErrorKind::Http`] when the HTTP client cannot start.
     pub fn new(token: Token, base: &str) -> Result<Self> {
-        let _ = (token, base);
-        Err(Error::new(ErrorKind::Http, "not implemented"))
+        let http = reqwest::Client::builder()
+            .user_agent(concat!("autumn-figma/", env!("CARGO_PKG_VERSION")))
+            .connect_timeout(Duration::from_secs(15))
+            .timeout(Duration::from_secs(120))
+            .build()
+            .map_err(|e| Error::new(ErrorKind::Http, format!("HTTP client: {e}")))?;
+        Ok(Self {
+            http,
+            base: base.trim_end_matches('/').to_owned(),
+            token,
+        })
+    }
+
+    fn api(&self, path: &str) -> reqwest::RequestBuilder {
+        self.http
+            .get(format!("{}{path}", self.base))
+            .header("X-Figma-Token", self.token.expose())
+    }
+
+    /// Send a request. Map the status to an error kind.
+    async fn send(request: reqwest::RequestBuilder) -> Result<Vec<u8>> {
+        let response = request
+            .send()
+            .await
+            .map_err(|e| Error::new(ErrorKind::Http, format!("request to Figma failed: {e}")))?;
+        let status = response.status().as_u16();
+        match status {
+            200..=299 => response.bytes().await.map(|b| b.to_vec()).map_err(|e| {
+                Error::new(ErrorKind::Http, format!("reading the Figma response: {e}"))
+            }),
+            401 | 403 => Err(Error::new(
+                ErrorKind::Auth,
+                format!(
+                    "Figma refused the token (HTTP {status}); check FIGMA_TOKEN and its scopes"
+                ),
+            )),
+            404 => Err(Error::new(
+                ErrorKind::NotFound,
+                "Figma has no such file or node (HTTP 404); check file_key",
+            )),
+            429 => {
+                let retry = response
+                    .headers()
+                    .get("retry-after")
+                    .and_then(|v| v.to_str().ok())
+                    .and_then(|v| v.trim().parse().ok());
+                Err(Error::rate_limited(retry))
+            }
+            _ => Err(Error::new(
+                ErrorKind::Http,
+                format!("Figma answered HTTP {status}"),
+            )),
+        }
+    }
+
+    fn check_key(key: &str) -> Result<()> {
+        if !key.is_empty() && key.chars().all(|c| c.is_ascii_alphanumeric()) {
+            Ok(())
+        } else {
+            Err(Error::new(
+                ErrorKind::Config,
+                format!("{key:?} is not a Figma file key"),
+            ))
+        }
     }
 
     /// `GET /v1/files/:key`, with optional `ids` and `depth`. Returns the
@@ -47,8 +110,15 @@ impl FigmaClient {
     /// [`ErrorKind::RateLimited`] on 429, and [`ErrorKind::Http`] on other
     /// failures.
     pub async fn file(&self, key: &str, ids: &[String], depth: Option<u32>) -> Result<Vec<u8>> {
-        let _ = (key, ids, depth);
-        Err(Error::new(ErrorKind::Http, "not implemented"))
+        Self::check_key(key)?;
+        let mut request = self.api(&format!("/v1/files/{key}"));
+        if !ids.is_empty() {
+            request = request.query(&[("ids", ids.join(","))]);
+        }
+        if let Some(depth) = depth {
+            request = request.query(&[("depth", depth)]);
+        }
+        Self::send(request).await
     }
 
     /// `GET /v1/files/:key/variables/local`. Returns `None` on 403 or 404:
@@ -58,8 +128,12 @@ impl FigmaClient {
     ///
     /// As [`Self::file`], except 403 and 404.
     pub async fn variables(&self, key: &str) -> Result<Option<Vec<u8>>> {
-        let _ = key;
-        Err(Error::new(ErrorKind::Http, "not implemented"))
+        Self::check_key(key)?;
+        match Self::send(self.api(&format!("/v1/files/{key}/variables/local"))).await {
+            Ok(body) => Ok(Some(body)),
+            Err(e) if matches!(e.kind(), ErrorKind::Auth | ErrorKind::NotFound) => Ok(None),
+            Err(e) => Err(e),
+        }
     }
 
     /// `GET /v1/images/:key` for `ids` in `format`. PNG renders at 2x.
@@ -67,9 +141,30 @@ impl FigmaClient {
     /// # Errors
     ///
     /// As [`Self::file`], and [`ErrorKind::Json`] on a bad body.
-    pub async fn images(&self, key: &str, ids: &[String], format: Format) -> Result<ImagesResponse> {
-        let _ = (key, ids, format);
-        Err(Error::new(ErrorKind::Http, "not implemented"))
+    pub async fn images(
+        &self,
+        key: &str,
+        ids: &[String],
+        format: Format,
+    ) -> Result<ImagesResponse> {
+        Self::check_key(key)?;
+        let mut request = self.api(&format!("/v1/images/{key}")).query(&[
+            ("ids", ids.join(",")),
+            ("format", format.as_str().to_owned()),
+        ]);
+        if format == Format::Png {
+            request = request.query(&[("scale", "2")]);
+        }
+        let body = Self::send(request).await?;
+        let images: ImagesResponse = serde_json::from_slice(&body)
+            .map_err(|e| Error::new(ErrorKind::Json, format!("Figma images: {e}")))?;
+        if let Some(err) = images.err.as_deref().filter(|e| !e.is_empty()) {
+            return Err(Error::new(
+                ErrorKind::Http,
+                format!("Figma could not render images: {err}"),
+            ));
+        }
+        Ok(images)
     }
 
     /// Download a rendered image. The request has no token.
@@ -78,8 +173,9 @@ impl FigmaClient {
     ///
     /// [`ErrorKind::Http`] on any failure.
     pub async fn download(&self, url: &str) -> Result<Vec<u8>> {
-        let _ = url;
-        Err(Error::new(ErrorKind::Http, "not implemented"))
+        Self::send(self.http.get(url))
+            .await
+            .map_err(|e| Error::new(ErrorKind::Http, format!("download {url}: {}", e.message())))
     }
 }
 

@@ -50,20 +50,29 @@ fn colors() {
     assert_eq!(css_color(&c(1.0, 1.0, 1.0, 1.0), 1.0), "#ffffff");
     assert_eq!(css_color(&c(0.486, 0.227, 0.929, 1.0), 1.0), "#7c3aed");
     assert_eq!(css_color(&c(0.0, 0.0, 0.0, 0.5), 1.0), "rgba(0, 0, 0, 0.5)");
-    assert_eq!(css_color(&c(0.0, 0.0, 0.0, 1.0), 0.25), "rgba(0, 0, 0, 0.25)");
+    assert_eq!(
+        css_color(&c(0.0, 0.0, 0.0, 1.0), 0.25),
+        "rgba(0, 0, 0, 0.25)"
+    );
     assert_eq!(css_color(&c(2.0, -1.0, 0.0, 1.0), 1.0), "#ff0000");
 }
 
 #[test]
 fn variable_values_and_references() {
     let (set, _) = set(&[]);
-    assert_eq!(set.variable("V:1").as_deref(), Some("var(--color-brand-primary)"));
+    assert_eq!(
+        set.variable("V:1").as_deref(),
+        Some("var(--color-brand-primary)")
+    );
     assert_eq!(set.variable("V:7"), None, "booleans have no CSS value");
     assert_eq!(set.variable("V:nope"), None);
     let css = set.css();
     assert!(css.contains("  --color-brand-primary: #7c3aed;\n"), "{css}");
     assert!(css.contains("  --color-surface: #ffffff;\n"), "{css}");
-    assert!(css.contains("  --color-on-primary: var(--color-surface);\n"), "{css}");
+    assert!(
+        css.contains("  --color-on-primary: var(--color-surface);\n"),
+        "{css}"
+    );
     assert!(css.contains("  --spacing-sm: 8px;\n"), "{css}");
     assert!(css.contains("  --font-weight-bold: 700;\n"), "{css}");
     assert!(css.contains("  --font-family-sans: \"Inter\";\n"), "{css}");
@@ -85,12 +94,19 @@ fn modes() {
     let dark = css.find("[data-theme=\"dark\"] {").expect(&css);
     let hc = css.find("[data-theme=\"high-contrast\"] {").expect(&css);
     assert!(hc > dark, "modes sort by slug");
-    assert!(css.contains("  --color-surface: rgba(0, 0, 0, 0.5);\n"), "{css}");
+    assert!(
+        css.contains("  --color-surface: rgba(0, 0, 0, 0.5);\n"),
+        "{css}"
+    );
     assert!(
         css.contains("@media (prefers-color-scheme: dark) {\n  :root:not([data-theme]) {\n    --color-brand-primary: #a78bfa;"),
         "{css}"
     );
-    assert_eq!(css.matches("@media").count(), 1, "only the dark mode: {css}");
+    assert_eq!(
+        css.matches("@media").count(),
+        1,
+        "only the dark mode: {css}"
+    );
     assert!(
         diags.iter().any(|d| d.message.contains("V:remote")),
         "unknown alias gives a diagnostic: {diags:?}"
@@ -110,13 +126,18 @@ fn styles_take_their_first_value() {
     let mut set = TokenSet::new(None, &BTreeMap::new(), &mut Vec::new());
     assert!(set.is_empty());
     assert_eq!(set.css(), "");
-    let first = set.style("S:1", "Heading/H1", || Some("700 32px/40px \"Inter\"".to_owned()));
+    let first = set.style("S:1", "Heading/H1", || {
+        Some("700 32px/40px \"Inter\"".to_owned())
+    });
     assert_eq!(first.as_deref(), Some("var(--heading-h1)"));
     let again = set.style("S:1", "Heading/H1", || Some("other".to_owned()));
     assert_eq!(again, first);
     assert_eq!(set.style("S:2", "Empty", || None), None);
     let css = set.css();
-    assert!(css.contains("  --heading-h1: 700 32px/40px \"Inter\";\n"), "{css}");
+    assert!(
+        css.contains("  --heading-h1: 700 32px/40px \"Inter\";\n"),
+        "{css}"
+    );
     assert!(!css.contains("other"));
     assert!(!set.is_empty());
 }

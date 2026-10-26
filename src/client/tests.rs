@@ -99,14 +99,20 @@ async fn images_and_downloads() {
     c.images("K", &["1:1".into()], Format::Png).await.unwrap();
     assert_eq!(stub.seen()[1].query["scale"], "2");
 
-    let bytes = c.download(&format!("{}/cdn/a.svg", stub.base)).await.unwrap();
+    let bytes = c
+        .download(&format!("{}/cdn/a.svg", stub.base))
+        .await
+        .unwrap();
     assert_eq!(bytes, b"bytes of a.svg");
     assert_eq!(stub.seen()[2].token, None, "no token to the CDN");
 }
 
 #[tokio::test]
 async fn transport_errors_are_http_errors() {
-    let err = client("http://127.0.0.1:1").file("K", &[], None).await.unwrap_err();
+    let err = client("http://127.0.0.1:1")
+        .file("K", &[], None)
+        .await
+        .unwrap_err();
     assert_eq!(err.kind(), ErrorKind::Http);
 }
 

@@ -50,7 +50,11 @@ fn init_writes_a_starter_and_never_overwrites() {
     let dir = tempfile::tempdir().unwrap();
     let r = cli(
         dir.path(),
-        &["init", "--file-key", "https://www.figma.com/design/AbC123/Todo"],
+        &[
+            "init",
+            "--file-key",
+            "https://www.figma.com/design/AbC123/Todo",
+        ],
         &no_env(),
     );
     assert_eq!(r.code, EXIT_OK, "{}", r.err);
@@ -61,7 +65,10 @@ fn init_writes_a_starter_and_never_overwrites() {
     let again = cli(dir.path(), &["init", "--file-key", "Other1"], &no_env());
     assert_eq!(again.code, EXIT_ERROR);
     assert!(again.err.contains("exists"), "{}", again.err);
-    assert_eq!(fs::read_to_string(dir.path().join("figma.toml")).unwrap(), text);
+    assert_eq!(
+        fs::read_to_string(dir.path().join("figma.toml")).unwrap(),
+        text
+    );
 }
 
 #[test]
@@ -77,13 +84,28 @@ fn generate_then_check() {
     let dir = fixture_app();
     let check = cli(dir.path(), &["generate", "--check"], &no_env());
     assert_eq!(check.code, EXIT_DRIFT, "{}", check.err);
-    assert!(check.err.contains("missing: src/figma/mod.rs"), "{}", check.err);
-    assert!(!dir.path().join("src/figma/mod.rs").exists(), "check writes nothing");
+    assert!(
+        check.err.contains("missing: src/figma/mod.rs"),
+        "{}",
+        check.err
+    );
+    assert!(
+        !dir.path().join("src/figma/mod.rs").exists(),
+        "check writes nothing"
+    );
 
     let gen_run = cli(dir.path(), &["generate"], &no_env());
     assert_eq!(gen_run.code, EXIT_OK, "{}", gen_run.err);
-    assert!(gen_run.out.contains("wrote src/figma/mod.rs"), "{}", gen_run.out);
-    assert!(gen_run.err.contains("warning: Screens > Todos > Hero art"), "{}", gen_run.err);
+    assert!(
+        gen_run.out.contains("wrote src/figma/mod.rs"),
+        "{}",
+        gen_run.out
+    );
+    assert!(
+        gen_run.err.contains("warning: Screens > Todos > Hero art"),
+        "{}",
+        gen_run.err
+    );
     assert!(gen_run.err.contains("missing asset"), "{}", gen_run.err);
 
     let clean = cli(dir.path(), &["generate", "--check"], &no_env());
@@ -93,18 +115,30 @@ fn generate_then_check() {
     fs::write(dir.path().join("src/figma/screens.rs"), "// hand edit\n").unwrap();
     let changed = cli(dir.path(), &["generate", "--check"], &no_env());
     assert_eq!(changed.code, EXIT_DRIFT);
-    assert!(changed.err.contains("changed: src/figma/screens.rs"), "{}", changed.err);
+    assert!(
+        changed.err.contains("changed: src/figma/screens.rs"),
+        "{}",
+        changed.err
+    );
 }
 
 #[test]
 fn config_flag_and_errors() {
     let dir = fixture_app();
-    fs::rename(dir.path().join("figma.toml"), dir.path().join("design.toml")).unwrap();
+    fs::rename(
+        dir.path().join("figma.toml"),
+        dir.path().join("design.toml"),
+    )
+    .unwrap();
     let missing = cli(dir.path(), &["generate"], &no_env());
     assert_eq!(missing.code, EXIT_ERROR);
     assert!(missing.err.contains("figma.toml"), "{}", missing.err);
     assert!(missing.err.contains("init"), "hint: {}", missing.err);
-    let ok = cli(dir.path(), &["--config", "design.toml", "generate"], &no_env());
+    let ok = cli(
+        dir.path(),
+        &["--config", "design.toml", "generate"],
+        &no_env(),
+    );
     assert_eq!(ok.code, EXIT_OK, "{}", ok.err);
 
     let bad = cli(dir.path(), &["frobnicate"], &no_env());
@@ -155,5 +189,9 @@ fn sync_pulls_and_generates_against_the_stub() {
     assert!(r.err.contains("Enterprise"), "variables notice: {}", r.err);
     assert!(!r.err.contains("missing asset"), "{}", r.err);
     assert!(!r.out.contains("figd_cli_secret") && !r.err.contains("figd_cli_secret"));
-    assert!(stub.seen().iter().all(|s| s.path.starts_with("/cdn") || s.token.is_some()));
+    assert!(
+        stub.seen()
+            .iter()
+            .all(|s| s.path.starts_with("/cdn") || s.token.is_some())
+    );
 }
