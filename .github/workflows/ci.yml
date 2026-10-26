@@ -30,3 +30,21 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - name: build the example Autumn app
         run: cargo build --locked --manifest-path examples/todo-app/Cargo.toml
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: install the browser
+        working-directory: examples/todo-app/e2e
+        run: npm install --no-audit --no-fund && npx playwright install --with-deps chromium
+      - name: browser smoke test (prod profile, CSRF on)
+        working-directory: examples/todo-app
+        env:
+          AUTUMN_ENV: prod
+          AUTUMN_SECURITY__TRUSTED_HOSTS__HOSTS: 127.0.0.1
+          AUTUMN_SERVER__HOST: 127.0.0.1
+          AUTUMN_SERVER__PORT: "3000"
+        run: |
+          export AUTUMN_SECURITY__SIGNING_SECRET="$(openssl rand -hex 32)"
+          ./target/debug/figma-todo-app > app.log 2>&1 &
+          for i in $(seq 1 60); do curl -sf -o /dev/null http://127.0.0.1:3000/ && break; sleep 1; done
+          cd e2e && BASE_URL=http://127.0.0.1:3000 npm run -s smoke || { cat ../app.log; exit 1; }
