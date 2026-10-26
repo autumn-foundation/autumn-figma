@@ -263,6 +263,12 @@ For a single screen that you do not need to keep in sync, the Figma MCP
 server and an agent work too: `get_design_context` gives a reference, and
 the agent ports it to Maud. For a design that changes, use this tool.
 
+## Start a Figma file from an app
+
+To go the other way once, from an Autumn app to a new Figma file, see
+[Import an Autumn app into Figma](docs/import-to-figma.md). It works on a
+Professional plan.
+
 ## License
 
 Apache-2.0
