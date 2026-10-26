@@ -34,6 +34,8 @@ pub mod screens;
 pub struct Attrs<'a> {
     /// The `id` attribute.
     pub id: Option<&'a str>,
+    /// The `class` attribute.
+    pub class: Option<&'a str>,
     /// The `name` attribute.
     pub name: Option<&'a str>,
     /// The `value` attribute.
@@ -80,6 +82,7 @@ impl Attrs<'static> {
     /// No attributes.
     pub const NONE: Self = Self {
         id: None,
+        class: None,
         name: None,
         value: None,
         type_: None,
@@ -101,4 +104,11 @@ impl Attrs<'static> {
         hx_indicator: None,
         hx_boost: None,
     };
+}
+
+/// The class attribute of a component root: its own class, then the
+/// classes of the caller.
+#[must_use]
+pub fn classes(base: &str, extra: Option<&str>) -> String {
+    extra.map_or_else(|| base.to_owned(), |e| format!("{base} {e}"))
 }

@@ -8,6 +8,10 @@
 #[path = "golden/src/figma/mod.rs"]
 mod figma;
 
+/// Unusual and hostile designs. They only need to compile and render.
+#[path = "golden_edge/src/figma/mod.rs"]
+mod edge;
+
 use figma::Attrs;
 use figma::components::{ButtonSize, button, icon_check, todo_row};
 use figma::screens::todos;
@@ -86,4 +90,44 @@ fn variants_and_props() {
         "{small}"
     );
     assert_eq!(ButtonSize::default(), ButtonSize::Large);
+}
+
+#[test]
+fn edge_cases_render() {
+    use edge::kit_b::{
+        EmptySize, KindKind, ToggleState, card, empty, kind, odd_quoted_set, toggle,
+    };
+    let a = &edge::Attrs::NONE;
+    assert!(
+        kind(KindKind::TertiaryButton, a)
+            .into_string()
+            .contains("Kind=Tertiary Button")
+    );
+    assert!(
+        toggle(ToggleState::Off, a)
+            .into_string()
+            .contains("State=On"),
+        "fallback arm"
+    );
+    assert!(odd_quoted_set(a).into_string().contains("no equals"));
+    assert_eq!(empty(EmptySize::S, a).into_string(), "");
+    let c = card(html! { p { "x" } }, "T", "B", a).into_string();
+    assert!(c.contains("<p>x</p></div>"), "the slot keeps its box: {c}");
+    let home = edge::main_2::home().into_string();
+    assert!(
+        home.contains(
+            "<input class=\"fg-home__email\" placeholder=\"you@example.com\" name=\"email\">"
+        ),
+        "{home}"
+    );
+    assert!(home.contains("Slot content"), "{home}");
+    assert!(home.contains(">NEW<"), "nested id override: {home}");
+    assert!(
+        home.contains("class=\"fg-card fg-home__wide-card\""),
+        "placement class: {home}"
+    );
+    assert!(
+        !home.contains("<details") && !home.contains("<a "),
+        "{home}"
+    );
 }

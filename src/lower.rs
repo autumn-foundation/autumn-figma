@@ -579,8 +579,8 @@ struct Lowerer<'a> {
 
 /// Tags that an exact container layer name selects.
 const BOX_NAME_TAGS: &[&str] = &[
-    "a", "article", "aside", "button", "details", "dialog", "fieldset", "figure", "footer", "form",
-    "header", "input", "li", "main", "nav", "ol", "section", "select", "table", "textarea", "ul",
+    "a", "article", "aside", "button", "fieldset", "figure", "footer", "form", "header", "input",
+    "li", "main", "nav", "ol", "section", "textarea", "ul",
 ];
 
 /// Text properties that an `<input>` takes from the text layer it replaces.
@@ -598,7 +598,7 @@ const TYPE_PROPERTIES: &[&str] = &[
 
 /// Tags that an exact text layer name selects.
 const TEXT_NAME_TAGS: &[&str] = &[
-    "a", "em", "h1", "h2", "h3", "h4", "h5", "h6", "p", "small", "strong",
+    "em", "h1", "h2", "h3", "h4", "h5", "h6", "p", "small", "strong",
 ];
 
 fn name_tag(name: &str, text: bool) -> Option<String> {
@@ -841,6 +841,7 @@ impl Lowerer<'_> {
         self.rules.push(CssRule {
             class: class.clone(),
             decls,
+            boost: false,
         });
         Some(class)
     }
@@ -888,10 +889,18 @@ impl Lowerer<'_> {
             if field == "visible" || field == "characters" {
                 continue;
             }
-            if let Some((name, PropertyType::InstanceSwap | PropertyType::Slot)) =
-                scope.props.get(key)
-            {
-                return Ok(Some(Item::Param(name.clone())));
+            match scope.props.get(key) {
+                Some((name, PropertyType::InstanceSwap)) => {
+                    return Ok(Some(Item::Param(name.clone())));
+                }
+                Some((name, PropertyType::Slot)) => {
+                    // A slot keeps its own box. Only its content changes.
+                    let slot = name.clone();
+                    return self
+                        .container(node, site, scope, binding, Some(&slot))
+                        .map(Some);
+                }
+                _ => {}
             }
         }
         if matches!(
@@ -917,6 +926,7 @@ impl Lowerer<'_> {
                     instance: node.kind == NodeType::Instance,
                     values: &values,
                     path: site.path,
+                    parent: site.parent,
                 };
                 return self
                     .call(&target, sig, scope, binding.map(|b| &b.1))
@@ -931,7 +941,7 @@ impl Lowerer<'_> {
         if node.kind == NodeType::Text {
             return self.text(node, site, scope, binding).map(Some);
         }
-        self.container(node, site, scope, binding).map(Some)
+        self.container(node, site, scope, binding, None).map(Some)
     }
 
     fn image(
@@ -1008,17 +1018,34 @@ impl Lowerer<'_> {
             .and_then(|b| b.tag.clone())
             .or_else(|| name_tag(&node.name, true))
             .unwrap_or_else(|| "span".to_owned());
+        let mut attrs: Vec<(String, String)> = Vec::new();
+        let children = match (tag.as_str(), content) {
+            ("input" | "textarea", Item::Text(text)) => {
+                // A form field shows the design text as its placeholder.
+                if !bind.is_some_and(|b| b.attrs.contains_key("placeholder")) {
+                    attrs.push(("placeholder".to_owned(), text));
+                }
+                Vec::new()
+            }
+            ("input" | "textarea" | "img" | "hr", _) => {
+                return Err(binding_err(format!(
+                    "[[bind]] {path_text}: a <{tag}> cannot show this text; bind the frame around it, or drop `text`"
+                )));
+            }
+            (_, content) => vec![content],
+        };
+        if let Some(b) = bind {
+            attrs.extend(b.attrs.clone());
+        }
         let decls = self.decls(node, site.parent, Role::Text, &path_text);
         let class = self.class(scope, node, false, decls);
         Ok(Item::Element(Element {
             tag,
             class,
             id: bind.and_then(|b| b.id.clone()),
-            attrs: bind
-                .map(|b| b.attrs.clone().into_iter().collect())
-                .unwrap_or_default(),
+            attrs,
             root_attrs: false,
-            children: vec![content],
+            children,
         }))
     }
 
@@ -1028,6 +1055,7 @@ impl Lowerer<'_> {
         site: Site<'_>,
         scope: &Scope,
         binding: Option<&(usize, Binding)>,
+        slot: Option<&str>,
     ) -> Result<Item> {
         let path_text = site.text();
         let bind = binding.map(|b| &b.1);
@@ -1081,13 +1109,17 @@ impl Lowerer<'_> {
             self.diagnostics.push(Diagnostic::info(&path_text, message));
         }
         let class = self.class(scope, node, site.root, decls);
-        if let Some(param) = binding.and_then(|(i, _)| scope.binds.get(i)) {
+        if let Some(param) = slot.or_else(|| {
+            binding
+                .and_then(|(i, _)| scope.binds.get(i))
+                .map(String::as_str)
+        }) {
             if !takes_children {
                 return Err(binding_err(format!(
                     "[[bind]] {path_text}: a <{tag}> takes no children, so it takes no slot"
                 )));
             }
-            children.push(Item::Param(param.clone()));
+            children.push(Item::Param(param.to_owned()));
         } else if takes_children {
             for child in &node.children {
                 let path = child_path(site.path, child);
@@ -1124,7 +1156,23 @@ impl Lowerer<'_> {
         bind: Option<&Binding>,
     ) -> Result<Item> {
         let sig = self.sigs[sig_index].clone();
-        let fields = root_fields(&target.path.join(" > "), bind)?;
+        let path_text = target.path.join(" > ");
+        let mut fields = root_fields(&path_text, bind)?;
+        if let Some(class) = self.placement_class(target, scope) {
+            let at = usize::from(fields.first().is_some_and(|(f, _)| f == "id"));
+            fields.insert(at, ("class".to_owned(), class));
+        }
+        if target.instance
+            && let Some((exposed, _, _)) = target.find(&|n| n.is_exposed_instance)
+        {
+            self.diagnostics.push(Diagnostic::warning(
+                &path_text,
+                format!(
+                    "the nested instance {:?} is exposed, but the generator does not pass its overrides; add a property to the outer component, or bind the nested layer",
+                    exposed.name
+                ),
+            ));
+        }
         let mut args = Vec::new();
         for (_, source) in &sig.params {
             let arg = match source {
@@ -1137,6 +1185,37 @@ impl Lowerer<'_> {
             path: sig.path(),
             args,
         }))
+    }
+
+    /// A class that places an instance in its parent, or `None` when the
+    /// instance needs no placement. The rule has a doubled selector, so it
+    /// wins over the rule of the component root.
+    fn placement_class(&mut self, target: &CallSite<'_>, scope: &Scope) -> Option<String> {
+        let mut decls = style::placement_decls(target.node, target.parent);
+        decls
+            .0
+            .retain(|(p, _)| PLACEMENT_PROPERTIES.contains(&p.as_str()));
+        if decls.get("align-self") == Some("stretch")
+            && let Parent::Flex { row } = target.parent
+        {
+            // The root has a fixed size. Stretch needs `auto` on that axis.
+            decls.push(if row { "height" } else { "width" }, "auto");
+        }
+        if decls.is_empty() {
+            return None;
+        }
+        let class = self.classes.claim(&format!(
+            "{}-{}__{}",
+            self.config.class_prefix,
+            scope.slug,
+            slug(&target.node.name)
+        ));
+        self.rules.push(CssRule {
+            class: class.clone(),
+            decls,
+            boost: true,
+        });
+        Some(class)
     }
 
     /// One call argument for a property or a binding parameter.
@@ -1262,19 +1341,32 @@ struct CallSite<'n> {
     /// Variant values from the main component name.
     values: &'n BTreeMap<String, String>,
     path: &'n [String],
+    /// How the parent places the instance.
+    parent: Parent,
 }
 
 impl<'n> CallSite<'n> {
     /// The first descendant that passes `pred`, with its parent and path.
-    /// Always `None` for a definition, which has no instance values.
+    /// For a definition placed in a frame, this searches the definition.
     fn find(&self, pred: &dyn Fn(&Node) -> bool) -> Option<(&'n Node, &'n Node, Vec<String>)> {
-        if self.instance {
-            find_with_path(self.node, self.path, pred)
-        } else {
-            None
-        }
+        find_with_path(self.node, self.path, pred)
     }
 }
+
+/// CSS properties that place a node in its parent.
+const PLACEMENT_PROPERTIES: &[&str] = &[
+    "position",
+    "left",
+    "top",
+    "width",
+    "height",
+    "max-width",
+    "min-width",
+    "min-height",
+    "flex",
+    "flex-shrink",
+    "align-self",
+];
 
 /// The first descendant of `node` that passes `pred`, with its parent and
 /// its layer path.
@@ -1326,9 +1418,12 @@ fn root_fields(path_text: &str, bind: Option<&Binding>) -> Result<Vec<(String, S
 /// True when `id` is one of `def_ids`, or an instance copy of one
 /// (`I<instance>;<def id>`).
 fn ends_with_any(id: &str, def_ids: &[String]) -> bool {
-    def_ids
-        .iter()
-        .any(|d| id == d || id.ends_with(&format!(";{d}")))
+    def_ids.iter().any(|d| {
+        // Figma drops the inner `I` when it nests an instance id:
+        // `I5:3;4:2` becomes `I6:1;5:3;4:2`.
+        let bare = d.trim_start_matches('I');
+        id == d || id.ends_with(&format!(";{d}")) || id.ends_with(&format!(";{bare}"))
+    })
 }
 
 #[cfg(test)]

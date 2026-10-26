@@ -15,19 +15,33 @@ fn fixture() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/todo")
 }
 
-fn golden() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/golden")
+/// Each fixture and its golden directory.
+fn cases() -> [(PathBuf, PathBuf); 2] {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    [
+        (root.join("tests/fixtures/todo"), root.join("tests/golden")),
+        (
+            root.join("tests/fixtures/edge"),
+            root.join("tests/golden_edge"),
+        ),
+    ]
 }
 
 #[test]
-fn todo_fixture_matches_golden_files() {
-    let config = Config::load(&fixture().join("figma.toml")).unwrap();
+fn fixtures_match_golden_files() {
+    for (fixture, golden) in cases() {
+        check_golden(&fixture, &golden);
+    }
+}
+
+fn check_golden(fixture: &Path, golden: &Path) {
+    let config = Config::load(&fixture.join("figma.toml")).unwrap();
     let output = generate::generate(&config).unwrap();
     let update = std::env::var_os("UPDATE_GOLDEN").is_some();
     let mut problems = Vec::new();
     for (path, text) in &output.files {
-        let rel = path.strip_prefix(fixture()).unwrap();
-        let golden_path = golden().join(rel);
+        let rel = path.strip_prefix(fixture).unwrap();
+        let golden_path = golden.join(rel);
         if update {
             fs::create_dir_all(golden_path.parent().unwrap()).unwrap();
             fs::write(&golden_path, text).unwrap();

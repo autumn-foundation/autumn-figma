@@ -221,7 +221,7 @@ pub enum ButtonSize {
         "{out}"
     );
     assert!(
-        out.contains("            button class=\"fg-button--large\" \"type\"=\"button\" \"id\"=[attrs.id] \"name\"=[attrs.name]"),
+        out.contains("            button class=(super::classes(\"fg-button--large\", attrs.class)) \"type\"=\"button\" \"id\"=[attrs.id] \"name\"=[attrs.name]"),
         "{out}"
     );
     assert!(
@@ -345,10 +345,12 @@ fn css_text() {
         CssRule {
             class: "fg-a".into(),
             decls,
+            boost: false,
         },
         CssRule {
             class: "fg-b".into(),
             decls: Decls::default(),
+            boost: false,
         },
     ];
     let out = css(&tokens, "fg", &rules, &header());

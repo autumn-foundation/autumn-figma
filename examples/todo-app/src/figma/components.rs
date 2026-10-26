@@ -24,7 +24,7 @@ pub fn button(
 ) -> Markup {
     match size {
         ButtonSize::Large => html! {
-            button class="fg-button--size-large" "id"=[attrs.id] "name"=[attrs.name] "value"=[attrs.value] "type"=[attrs.type_] "href"=[attrs.href] "aria-label"=[attrs.aria_label] "hx-get"=[attrs.hx_get] "hx-post"=[attrs.hx_post] "hx-put"=[attrs.hx_put] "hx-patch"=[attrs.hx_patch] "hx-delete"=[attrs.hx_delete] "hx-target"=[attrs.hx_target] "hx-swap"=[attrs.hx_swap] "hx-trigger"=[attrs.hx_trigger] "hx-vals"=[attrs.hx_vals] "hx-include"=[attrs.hx_include] "hx-confirm"=[attrs.hx_confirm] "hx-push-url"=[attrs.hx_push_url] "hx-select"=[attrs.hx_select] "hx-indicator"=[attrs.hx_indicator] "hx-boost"=[attrs.hx_boost] {
+            button class=(super::classes("fg-button--size-large", attrs.class)) "id"=[attrs.id] "name"=[attrs.name] "value"=[attrs.value] "type"=[attrs.type_] "href"=[attrs.href] "aria-label"=[attrs.aria_label] "hx-get"=[attrs.hx_get] "hx-post"=[attrs.hx_post] "hx-put"=[attrs.hx_put] "hx-patch"=[attrs.hx_patch] "hx-delete"=[attrs.hx_delete] "hx-target"=[attrs.hx_target] "hx-swap"=[attrs.hx_swap] "hx-trigger"=[attrs.hx_trigger] "hx-vals"=[attrs.hx_vals] "hx-include"=[attrs.hx_include] "hx-confirm"=[attrs.hx_confirm] "hx-push-url"=[attrs.hx_push_url] "hx-select"=[attrs.hx_select] "hx-indicator"=[attrs.hx_indicator] "hx-boost"=[attrs.hx_boost] {
                 @if show_icon {
                     (icon)
                 }
@@ -32,7 +32,7 @@ pub fn button(
             }
         },
         ButtonSize::Small => html! {
-            button class="fg-button--size-small" "id"=[attrs.id] "name"=[attrs.name] "value"=[attrs.value] "type"=[attrs.type_] "href"=[attrs.href] "aria-label"=[attrs.aria_label] "hx-get"=[attrs.hx_get] "hx-post"=[attrs.hx_post] "hx-put"=[attrs.hx_put] "hx-patch"=[attrs.hx_patch] "hx-delete"=[attrs.hx_delete] "hx-target"=[attrs.hx_target] "hx-swap"=[attrs.hx_swap] "hx-trigger"=[attrs.hx_trigger] "hx-vals"=[attrs.hx_vals] "hx-include"=[attrs.hx_include] "hx-confirm"=[attrs.hx_confirm] "hx-push-url"=[attrs.hx_push_url] "hx-select"=[attrs.hx_select] "hx-indicator"=[attrs.hx_indicator] "hx-boost"=[attrs.hx_boost] {
+            button class=(super::classes("fg-button--size-small", attrs.class)) "id"=[attrs.id] "name"=[attrs.name] "value"=[attrs.value] "type"=[attrs.type_] "href"=[attrs.href] "aria-label"=[attrs.aria_label] "hx-get"=[attrs.hx_get] "hx-post"=[attrs.hx_post] "hx-put"=[attrs.hx_put] "hx-patch"=[attrs.hx_patch] "hx-delete"=[attrs.hx_delete] "hx-target"=[attrs.hx_target] "hx-swap"=[attrs.hx_swap] "hx-trigger"=[attrs.hx_trigger] "hx-vals"=[attrs.hx_vals] "hx-include"=[attrs.hx_include] "hx-confirm"=[attrs.hx_confirm] "hx-push-url"=[attrs.hx_push_url] "hx-select"=[attrs.hx_select] "hx-indicator"=[attrs.hx_indicator] "hx-boost"=[attrs.hx_boost] {
                 @if show_icon {
                     (icon)
                 }
@@ -48,7 +48,7 @@ pub fn icon_check(
     attrs: &super::Attrs<'_>,
 ) -> Markup {
     html! {
-        img class="fg-icon-check" "src"="/static/figma/icon-check--1-30.svg" "alt"="" "id"=[attrs.id] "name"=[attrs.name] "value"=[attrs.value] "type"=[attrs.type_] "href"=[attrs.href] "aria-label"=[attrs.aria_label] "hx-get"=[attrs.hx_get] "hx-post"=[attrs.hx_post] "hx-put"=[attrs.hx_put] "hx-patch"=[attrs.hx_patch] "hx-delete"=[attrs.hx_delete] "hx-target"=[attrs.hx_target] "hx-swap"=[attrs.hx_swap] "hx-trigger"=[attrs.hx_trigger] "hx-vals"=[attrs.hx_vals] "hx-include"=[attrs.hx_include] "hx-confirm"=[attrs.hx_confirm] "hx-push-url"=[attrs.hx_push_url] "hx-select"=[attrs.hx_select] "hx-indicator"=[attrs.hx_indicator] "hx-boost"=[attrs.hx_boost];
+        img class=(super::classes("fg-icon-check", attrs.class)) "src"="/static/figma/icon-check--1-30.svg" "alt"="" "id"=[attrs.id] "name"=[attrs.name] "value"=[attrs.value] "type"=[attrs.type_] "href"=[attrs.href] "aria-label"=[attrs.aria_label] "hx-get"=[attrs.hx_get] "hx-post"=[attrs.hx_post] "hx-put"=[attrs.hx_put] "hx-patch"=[attrs.hx_patch] "hx-delete"=[attrs.hx_delete] "hx-target"=[attrs.hx_target] "hx-swap"=[attrs.hx_swap] "hx-trigger"=[attrs.hx_trigger] "hx-vals"=[attrs.hx_vals] "hx-include"=[attrs.hx_include] "hx-confirm"=[attrs.hx_confirm] "hx-push-url"=[attrs.hx_push_url] "hx-select"=[attrs.hx_select] "hx-indicator"=[attrs.hx_indicator] "hx-boost"=[attrs.hx_boost];
     }
 }
 
@@ -60,11 +60,11 @@ pub fn todo_row(
     attrs: &super::Attrs<'_>,
 ) -> Markup {
     html! {
-        li class="fg-todo-row" "id"=[attrs.id] "name"=[attrs.name] "value"=[attrs.value] "type"=[attrs.type_] "href"=[attrs.href] "aria-label"=[attrs.aria_label] "hx-get"=[attrs.hx_get] "hx-post"=[attrs.hx_post] "hx-put"=[attrs.hx_put] "hx-patch"=[attrs.hx_patch] "hx-delete"=[attrs.hx_delete] "hx-target"=[attrs.hx_target] "hx-swap"=[attrs.hx_swap] "hx-trigger"=[attrs.hx_trigger] "hx-vals"=[attrs.hx_vals] "hx-include"=[attrs.hx_include] "hx-confirm"=[attrs.hx_confirm] "hx-push-url"=[attrs.hx_push_url] "hx-select"=[attrs.hx_select] "hx-indicator"=[attrs.hx_indicator] "hx-boost"=[attrs.hx_boost] {
+        li class=(super::classes("fg-todo-row", attrs.class)) "id"=[attrs.id] "name"=[attrs.name] "value"=[attrs.value] "type"=[attrs.type_] "href"=[attrs.href] "aria-label"=[attrs.aria_label] "hx-get"=[attrs.hx_get] "hx-post"=[attrs.hx_post] "hx-put"=[attrs.hx_put] "hx-patch"=[attrs.hx_patch] "hx-delete"=[attrs.hx_delete] "hx-target"=[attrs.hx_target] "hx-swap"=[attrs.hx_swap] "hx-trigger"=[attrs.hx_trigger] "hx-vals"=[attrs.hx_vals] "hx-include"=[attrs.hx_include] "hx-confirm"=[attrs.hx_confirm] "hx-push-url"=[attrs.hx_push_url] "hx-select"=[attrs.hx_select] "hx-indicator"=[attrs.hx_indicator] "hx-boost"=[attrs.hx_boost] {
             div class="fg-todo-row__checkbox" {}
             span class="fg-todo-row__title" { (title) }
             @if done {
-                (super::components::icon_check(&super::Attrs::NONE))
+                (super::components::icon_check(&super::Attrs { class: Some("fg-todo-row__done-icon"), ..super::Attrs::NONE }))
             }
         }
     }

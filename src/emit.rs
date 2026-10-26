@@ -222,8 +222,19 @@ fn item(out: &mut String, item: &Item, level: usize) {
 
 fn open_tag(e: &Element) -> String {
     let mut open = e.tag.clone();
-    if let Some(class) = &e.class {
-        let _ = write!(open, " class={}", rust_str(class));
+    match (&e.class, e.root_attrs) {
+        (Some(class), true) => {
+            let _ = write!(
+                open,
+                " class=(super::classes({}, attrs.class))",
+                rust_str(class)
+            );
+        }
+        (Some(class), false) => {
+            let _ = write!(open, " class={}", rust_str(class));
+        }
+        (None, true) => open.push_str(" class=[attrs.class]"),
+        (None, false) => {}
     }
     if let Some(id) = &e.id {
         let _ = write!(open, " id={}", rust_str(id));
@@ -341,7 +352,7 @@ pub fn mod_rs(modules: &[Module], header: &Header) -> String {
     out.push_str(
         "\n/// Attributes for the root element of a component.\n///\n/// Set them at the call site to add htmx behavior:\n///\n/// ```ignore\n/// todo_row(false, \"New\", &Attrs { hx_delete: Some(\"/todos/7\"), ..Attrs::NONE })\n/// ```\n#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]\npub struct Attrs<'a> {\n",
     );
-    for (html, field) in ROOT_ATTRS {
+    for (html, field) in attrs_fields() {
         let _ = writeln!(
             out,
             "    /// The `{html}` attribute.\n    pub {field}: Option<&'a str>,"
@@ -350,11 +361,24 @@ pub fn mod_rs(modules: &[Module], header: &Header) -> String {
     out.push_str(
         "}\n\nimpl Attrs<'static> {\n    /// No attributes.\n    pub const NONE: Self = Self {\n",
     );
-    for (_, field) in ROOT_ATTRS {
+    for (_, field) in attrs_fields() {
         let _ = writeln!(out, "        {field}: None,");
     }
     out.push_str("    };\n}\n");
+    out.push_str(
+        "\n/// The class attribute of a component root: its own class, then the\n/// classes of the caller.\n#[must_use]\npub fn classes(base: &str, extra: Option<&str>) -> String {\n    extra.map_or_else(|| base.to_owned(), |e| format!(\"{base} {e}\"))\n}\n",
+    );
     out
+}
+
+/// The `Attrs` fields: `id`, `class`, then the other root attributes.
+fn attrs_fields() -> impl Iterator<Item = (&'static str, &'static str)> {
+    ROOT_ATTRS
+        .iter()
+        .take(1)
+        .copied()
+        .chain(std::iter::once(("class", "class")))
+        .chain(ROOT_ATTRS.iter().skip(1).copied())
 }
 
 /// The CSS text: tokens, a base rule for `prefix`, and the rules.
@@ -370,7 +394,11 @@ pub fn css(tokens: &TokenSet, prefix: &str, rules: &[CssRule], header: &Header) 
         "\n:where([class^=\"{prefix}-\"], [class*=\" {prefix}-\"]) {{\n{BASE_RESET}}}\n"
     );
     for rule in rules.iter().filter(|r| !r.decls.is_empty()) {
-        let _ = writeln!(out, "\n.{} {{", rule.class);
+        if rule.boost {
+            let _ = writeln!(out, "\n.{0}.{0} {{", rule.class);
+        } else {
+            let _ = writeln!(out, "\n.{} {{", rule.class);
+        }
         for (property, value) in &rule.decls.0 {
             let _ = writeln!(out, "  {property}: {value};");
         }

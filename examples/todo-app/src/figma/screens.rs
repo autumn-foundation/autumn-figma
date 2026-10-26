@@ -17,7 +17,7 @@ pub fn todos(
                 (super::components::button(
                     super::components::ButtonSize::Small,
                     html! {
-                        (super::components::icon_check(&super::Attrs::NONE))
+                        (super::components::icon_check(&super::Attrs { class: Some("fg-todos__icon"), ..super::Attrs::NONE }))
                     },
                     "Add",
                     true,

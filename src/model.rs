@@ -292,6 +292,9 @@ pub struct Node {
     /// The main component, for an instance.
     #[serde(default)]
     pub component_id: Option<String>,
+    /// True for a nested instance that its main component exposes.
+    #[serde(default)]
+    pub is_exposed_instance: bool,
     /// Property values, for an instance.
     #[serde(default)]
     pub component_properties: BTreeMap<String, ComponentProperty>,

@@ -1,0 +1,12 @@
+# The edge fixture: unusual and hostile designs.
+file_key = "Edge1"
+
+# The page name holds `>`, so this binding uses the node id.
+[[bind]]
+node = "I5:3;4:2"
+text = "badge"
+
+[[bind]]
+path = "Main > Home > Email"
+tag = "input"
+attrs = { name = "email" }

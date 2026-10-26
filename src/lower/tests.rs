@@ -172,7 +172,11 @@ fn todo_row_uses_props_and_calls_the_icon() {
             cond: "done".into(),
             body: vec![Item::Call(Call {
                 path: "super::components::icon_check".into(),
-                args: vec![Arg::Attrs(vec![])],
+                // The fixed 16px icon must not shrink in the row.
+                args: vec![Arg::Attrs(vec![(
+                    "class".into(),
+                    "fg-todo-row__done-icon".into()
+                )])],
             })]
         }
     );
@@ -227,7 +231,7 @@ fn screen_applies_bindings() {
                 Arg::Path("super::components::ButtonSize::Small".into()),
                 Arg::Markup(vec![Item::Call(Call {
                     path: "super::components::icon_check".into(),
-                    args: vec![Arg::Attrs(vec![])],
+                    args: vec![Arg::Attrs(vec![("class".into(), "fg-todos__icon".into())])],
                 })]),
                 Arg::Str("Add".into()),
                 Arg::Bool(true),
@@ -659,4 +663,184 @@ fn hostile_variant_sets_do_not_panic() {
         panic!("not a match")
     };
     assert!(fallback.is_some(), "most combinations have no arm");
+}
+
+#[test]
+fn an_instance_keeps_its_place_in_the_parent() {
+    // Regression: a FILL instance and an absolute instance became bare
+    // calls, so the button did not stretch and the overlay moved.
+    let file = doc(
+        r#"{"id":"1","name":"Btn","type":"COMPONENT","layoutMode":"HORIZONTAL",
+            "layoutSizingHorizontal":"FIXED","absoluteBoundingBox":{"x":0,"y":0,"width":120,"height":40}},
+           {"id":"2","name":"Screen","type":"FRAME","layoutMode":"VERTICAL",
+            "absoluteBoundingBox":{"x":0,"y":0,"width":400,"height":400},"children":[
+             {"id":"3","name":"Wide","type":"INSTANCE","componentId":"1","layoutSizingHorizontal":"FILL",
+              "layoutSizingVertical":"HUG","absoluteBoundingBox":{"x":0,"y":0,"width":400,"height":40}},
+             {"id":"4","name":"Plain","type":"INSTANCE","componentId":"1","layoutSizingHorizontal":"HUG",
+              "layoutSizingVertical":"HUG","absoluteBoundingBox":{"x":0,"y":40,"width":120,"height":40}}]},
+           {"id":"5","name":"Overlay","type":"FRAME","absoluteBoundingBox":{"x":1000,"y":0,"width":400,"height":400},"children":[
+             {"id":"6","name":"Pinned","type":"INSTANCE","componentId":"1",
+              "absoluteBoundingBox":{"x":1200,"y":150,"width":120,"height":40}}]}"#,
+    );
+    let l = lower(&file, None, &cfg("")).unwrap();
+    let screen = root(single(func(&l, "page", "screen")));
+    let class_of = |item: &Item| match item {
+        Item::Call(c) => match c.args.last() {
+            Some(Arg::Attrs(fields)) => fields
+                .iter()
+                .find(|(f, _)| f == "class")
+                .map(|(_, v)| v.clone()),
+            other => panic!("no attrs: {other:?}"),
+        },
+        other => panic!("not a call: {other:?}"),
+    };
+    let wide = class_of(&screen.children[0]).expect("a FILL instance gets a class");
+    assert_eq!(
+        class_of(&screen.children[1]),
+        None,
+        "a HUG instance needs none"
+    );
+    let rule = l.rules.iter().find(|r| r.class == wide).unwrap();
+    assert!(rule.boost, "it must beat the component root rule");
+    assert_eq!(rule.decls.get("align-self"), Some("stretch"));
+    assert_eq!(rule.decls.get("width"), Some("auto"));
+    let overlay = root(single(func(&l, "page", "overlay")));
+    let pinned = class_of(&overlay.children[0]).unwrap();
+    let rule = l.rules.iter().find(|r| r.class == pinned).unwrap();
+    assert_eq!(rule.decls.get("position"), Some("absolute"));
+    assert_eq!(rule.decls.get("left"), Some("200px"));
+    assert_eq!(rule.decls.get("top"), Some("150px"));
+}
+
+#[test]
+fn bindings_inside_nested_library_instances_reach_callers() {
+    // Regression: Figma drops the inner `I` in nested ids
+    // (`I5:3;4:2` becomes `I6:1;5:3;4:2`), so the override was lost.
+    let file = doc(r#"{"id":"1","name":"Card","type":"COMPONENT","children":[
+             {"id":"5:3","name":"Badge","type":"INSTANCE","componentId":"99:9","children":[
+               {"id":"I5:3;4:2","name":"Label","type":"TEXT","characters":"Default"}]}]},
+           {"id":"2","name":"Screen","type":"FRAME","children":[
+             {"id":"6:1","name":"Card","type":"INSTANCE","componentId":"1","children":[
+               {"id":"I6:1;5:3","name":"Badge","type":"INSTANCE","componentId":"99:9","children":[
+                 {"id":"I6:1;5:3;4:2","name":"Label","type":"TEXT","characters":"NEW"}]}]}]}"#);
+    let l = lower(
+        &file,
+        None,
+        &cfg("[[bind]]\npath = \"Page > Card > Badge > Label\"\ntext = \"badge\""),
+    )
+    .unwrap();
+    let screen = root(single(func(&l, "page", "screen")));
+    let Item::Call(call) = &screen.children[0] else {
+        panic!("not a call")
+    };
+    assert_eq!(call.args[0], Arg::Str("NEW".into()));
+}
+
+#[test]
+fn a_slot_keeps_its_container() {
+    // Regression: the SLOT frame became a bare parameter, so its column
+    // layout, gap, and padding were lost.
+    let file = doc(
+        r#"{"id":"1","name":"Card","type":"COMPONENT","componentPropertyDefinitions":{
+             "Content#1":{"type":"SLOT","defaultValue":""}},
+           "children":[{"id":"1:1","name":"Content","type":"SLOT","layoutMode":"VERTICAL","itemSpacing":12,
+             "paddingLeft":16,"paddingRight":16,"paddingTop":16,"paddingBottom":16,
+             "componentPropertyReferences":{"slotContentId":"Content#1"}}]}"#,
+    );
+    let l = lower(&file, None, &cfg("")).unwrap();
+    let card = root(single(func(&l, "page", "card")));
+    let content = child_el(card, 0);
+    assert_eq!(content.children, [Item::Param("content".into())]);
+    let rule = l
+        .rules
+        .iter()
+        .find(|r| Some(&r.class) == content.class.as_ref())
+        .unwrap();
+    assert_eq!(rule.decls.get("gap"), Some("12px"));
+}
+
+#[test]
+fn risky_tags_need_a_binding() {
+    // Regression: <details>, <select>, <table>, <dialog> from layer names
+    // hid or broke content; a text layer named "A" became a link.
+    let file = doc(
+        r#"{"id":"1","name":"Screen","type":"FRAME","layoutMode":"VERTICAL","children":[
+             {"id":"2","name":"Details","type":"FRAME"},{"id":"3","name":"Select","type":"FRAME"},
+             {"id":"4","name":"Table","type":"FRAME"},{"id":"5","name":"Dialog","type":"FRAME"},
+             {"id":"6","name":"A","type":"TEXT","characters":"x"}]}"#,
+    );
+    let l = lower(&file, None, &cfg("")).unwrap();
+    let screen = root(single(func(&l, "page", "screen")));
+    let tags: Vec<_> = (0..5).map(|i| child_el(screen, i).tag.as_str()).collect();
+    assert_eq!(tags, ["div", "div", "div", "div", "span"]);
+}
+
+#[test]
+fn exposed_nested_instances_give_a_warning() {
+    let file = doc(r#"{"id":"1","name":"Card","type":"COMPONENT","children":[
+             {"id":"1:1","name":"Button","type":"INSTANCE","componentId":"99:1"}]},
+           {"id":"2","name":"Screen","type":"FRAME","children":[
+             {"id":"3","name":"Card","type":"INSTANCE","componentId":"1","children":[
+               {"id":"I3;1:1","name":"Button","type":"INSTANCE","componentId":"99:1","isExposedInstance":true,
+                "componentProperties":{"Label#4:0":{"type":"TEXT","value":"Buy now"}}}]}]}"#);
+    let l = lower(&file, None, &cfg("")).unwrap();
+    assert!(
+        l.diagnostics
+            .iter()
+            .any(|d| d.message.contains("exposed") && d.path.ends_with("Card")),
+        "{:?}",
+        l.diagnostics
+    );
+}
+
+#[test]
+fn a_definition_in_a_frame_keeps_its_default_swap() {
+    // Regression: the call for a definition placed in a frame passed an
+    // empty `html! {}` for an INSTANCE_SWAP property.
+    let file = doc(
+        r#"{"id":"1","name":"Icon","type":"COMPONENT","children":[{"id":"1:1","type":"VECTOR"}]},
+           {"id":"2","name":"Screen","type":"FRAME","children":[
+             {"id":"3","name":"Button","type":"COMPONENT","componentPropertyDefinitions":{
+                "Icon#1":{"type":"INSTANCE_SWAP","defaultValue":"1"}},
+              "children":[{"id":"3:1","name":"Icon","type":"INSTANCE","componentId":"1",
+                "componentPropertyReferences":{"mainComponent":"Icon#1"}}]}]}"#,
+    );
+    let l = lower(&file, None, &cfg("")).unwrap();
+    let screen = root(single(func(&l, "page", "screen")));
+    let Item::Call(call) = &screen.children[0] else {
+        panic!("not a call: {:?}", screen.children)
+    };
+    assert_eq!(
+        call.args[0],
+        Arg::Markup(vec![Item::Call(Call {
+            path: "super::page::icon".into(),
+            args: vec![Arg::Attrs(vec![])],
+        })])
+    );
+}
+
+#[test]
+fn a_text_layer_as_an_input_uses_a_placeholder() {
+    let file = doc(r#"{"id":"1","name":"Home","type":"FRAME","children":[
+             {"id":"2","name":"Email","type":"TEXT","characters":"you@example.com"}]}"#);
+    let ok = lower(
+        &file,
+        None,
+        &cfg("[[bind]]\npath = \"Page > Home > Email\"\ntag = \"input\""),
+    )
+    .unwrap();
+    let input = child_el(root(single(func(&ok, "page", "home"))), 0);
+    assert_eq!(input.children, []);
+    assert_eq!(
+        input.attrs,
+        [("placeholder".into(), "you@example.com".into())]
+    );
+    // Regression: the `text` parameter was silently unused.
+    let err = lower(
+        &file,
+        None,
+        &cfg("[[bind]]\npath = \"Page > Home > Email\"\ntag = \"input\"\ntext = \"email\""),
+    )
+    .unwrap_err();
+    assert_eq!(err.kind(), ErrorKind::Binding);
 }

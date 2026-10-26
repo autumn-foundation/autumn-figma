@@ -161,6 +161,9 @@ pub struct CssRule {
     pub class: String,
     /// The declarations.
     pub decls: Decls,
+    /// True to double the class in the selector, so the rule wins over a
+    /// component root rule (for the place of an instance).
+    pub boost: bool,
 }
 
 /// The root attributes a component accepts: HTML name and `Attrs` field.

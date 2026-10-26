@@ -118,6 +118,21 @@ pub fn node_decls(node: &Node, parent: Parent, role: Role, cx: &mut StyleCx<'_>)
     d
 }
 
+/// Only the declarations that place `node` in its parent: position,
+/// offsets, size, and flex sizing.
+#[must_use]
+pub fn placement_decls(node: &Node, parent: Parent) -> Decls {
+    let mut d = Decls::default();
+    placement(
+        node,
+        parent,
+        Role::Box,
+        places_children_absolutely(node),
+        &mut d,
+    );
+    d
+}
+
 /// True when `node` is a box without auto layout that has visible children.
 #[must_use]
 pub fn places_children_absolutely(node: &Node) -> bool {
@@ -244,6 +259,21 @@ fn spacing(node: &Node, field: &str, value: Option<f64>, cx: &StyleCx<'_>) -> Op
 }
 
 fn placement(node: &Node, parent: Parent, role: Role, absolute_box: bool, d: &mut Decls) {
+    let mut placed = Decls::default();
+    placement_from_box(node, parent, role, absolute_box, &mut placed);
+    if node.absolute_bounding_box.is_none() {
+        // Without a box, a size or an offset would be 0. Leave them out.
+        placed.0.retain(|(p, v)| match p.as_str() {
+            "flex" | "align-self" => true,
+            "min-width" | "min-height" => v == "0",
+            "width" => v == "100%",
+            _ => false,
+        });
+    }
+    d.0.extend(placed.0);
+}
+
+fn placement_from_box(node: &Node, parent: Parent, role: Role, absolute_box: bool, d: &mut Decls) {
     let b = bbox(node);
     let fixed_if = |s: Sizing| {
         if (absolute_box || role == Role::Image) && s == Sizing::Hug {
