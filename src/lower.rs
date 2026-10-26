@@ -1136,6 +1136,11 @@ impl Lowerer<'_> {
         if let Some(b) = bind {
             attrs.extend(b.attrs.clone());
         }
+        if let Some(theme) = self.tokens.mode_attr(&node.explicit_variable_modes)
+            && !attrs.iter().any(|(n, _)| n == "data-theme")
+        {
+            attrs.push(("data-theme".to_owned(), theme));
+        }
         Ok(Item::Element(Element {
             tag,
             class,
@@ -1192,9 +1197,22 @@ impl Lowerer<'_> {
     /// wins over the rule of the component root.
     fn placement_class(&mut self, target: &CallSite<'_>, scope: &Scope) -> Option<String> {
         let mut decls = style::placement_decls(target.node, target.parent);
-        decls
-            .0
-            .retain(|(p, _)| PLACEMENT_PROPERTIES.contains(&p.as_str()));
+        // The component root already sets its own size. Keep only what
+        // differs for this instance.
+        let main = if target.instance {
+            target
+                .node
+                .component_id
+                .as_deref()
+                .and_then(|id| find_node(&self.file.document, id))
+        } else {
+            Some(target.node)
+        };
+        let own = main.map(|m| style::placement_decls(m, Parent::Root { screen: false }));
+        decls.0.retain(|(p, v)| {
+            PLACEMENT_PROPERTIES.contains(&p.as_str())
+                && own.as_ref().is_none_or(|o| o.get(p) != Some(v.as_str()))
+        });
         if decls.get("align-self") == Some("stretch")
             && let Parent::Flex { row } = target.parent
         {
@@ -1367,6 +1385,14 @@ const PLACEMENT_PROPERTIES: &[&str] = &[
     "flex-shrink",
     "align-self",
 ];
+
+/// The node with `id` in the tree under `node`.
+fn find_node<'n>(node: &'n Node, id: &str) -> Option<&'n Node> {
+    if node.id == id {
+        return Some(node);
+    }
+    node.children.iter().find_map(|c| find_node(c, id))
+}
 
 /// The first descendant of `node` that passes `pred`, with its parent and
 /// its layer path.

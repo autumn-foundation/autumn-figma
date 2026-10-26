@@ -153,12 +153,12 @@
                       "lineHeightPx": 24,
                       "lineHeightUnit": "PIXELS",
                       "textAlignHorizontal": "LEFT",
-                      "textAlignVertical": "TOP"
+                      "textAlignVertical": "TOP",
+                      "textAutoResize": "WIDTH_AND_HEIGHT"
                     },
                     "styles": {
                       "text": "S:body"
                     },
-                    "textAutoResize": "WIDTH_AND_HEIGHT",
                     "type": "TEXT"
                   }
                 ],
@@ -318,12 +318,12 @@
                       "lineHeightPx": 24,
                       "lineHeightUnit": "PIXELS",
                       "textAlignHorizontal": "LEFT",
-                      "textAlignVertical": "TOP"
+                      "textAlignVertical": "TOP",
+                      "textAutoResize": "WIDTH_AND_HEIGHT"
                     },
                     "styles": {
                       "text": "S:body"
                     },
-                    "textAutoResize": "WIDTH_AND_HEIGHT",
                     "type": "TEXT"
                   }
                 ],
@@ -520,9 +520,9 @@
                   "lineHeightPx": 24,
                   "lineHeightUnit": "PIXELS",
                   "textAlignHorizontal": "LEFT",
-                  "textAlignVertical": "TOP"
+                  "textAlignVertical": "TOP",
+                  "textAutoResize": "HEIGHT"
                 },
-                "textAutoResize": "HEIGHT",
                 "type": "TEXT"
               },
               {
@@ -656,12 +656,12 @@
                   "lineHeightPx": 40,
                   "lineHeightUnit": "PIXELS",
                   "textAlignHorizontal": "LEFT",
-                  "textAlignVertical": "TOP"
+                  "textAlignVertical": "TOP",
+                  "textAutoResize": "WIDTH_AND_HEIGHT"
                 },
                 "styles": {
                   "text": "S:heading"
                 },
-                "textAutoResize": "WIDTH_AND_HEIGHT",
                 "type": "TEXT"
               },
               {
@@ -713,9 +713,9 @@
                           "lineHeightPx": 24,
                           "lineHeightUnit": "PIXELS",
                           "textAlignHorizontal": "LEFT",
-                          "textAlignVertical": "TOP"
+                          "textAlignVertical": "TOP",
+                          "textAutoResize": "WIDTH_AND_HEIGHT"
                         },
-                        "textAutoResize": "WIDTH_AND_HEIGHT",
                         "type": "TEXT"
                       }
                     ],
@@ -858,12 +858,12 @@
                           "lineHeightPx": 24,
                           "lineHeightUnit": "PIXELS",
                           "textAlignHorizontal": "LEFT",
-                          "textAlignVertical": "TOP"
+                          "textAlignVertical": "TOP",
+                          "textAutoResize": "WIDTH_AND_HEIGHT"
                         },
                         "styles": {
                           "text": "S:body"
                         },
-                        "textAutoResize": "WIDTH_AND_HEIGHT",
                         "type": "TEXT"
                       }
                     ],
@@ -1030,9 +1030,9 @@
                           "lineHeightPx": 24,
                           "lineHeightUnit": "PIXELS",
                           "textAlignHorizontal": "LEFT",
-                          "textAlignVertical": "TOP"
+                          "textAlignVertical": "TOP",
+                          "textAutoResize": "HEIGHT"
                         },
-                        "textAutoResize": "HEIGHT",
                         "type": "TEXT"
                       },
                       {
@@ -1190,9 +1190,9 @@
                           "lineHeightPx": 24,
                           "lineHeightUnit": "PIXELS",
                           "textAlignHorizontal": "LEFT",
-                          "textAlignVertical": "TOP"
+                          "textAlignVertical": "TOP",
+                          "textAutoResize": "HEIGHT"
                         },
-                        "textAutoResize": "HEIGHT",
                         "type": "TEXT"
                       },
                       {
@@ -1321,9 +1321,9 @@
                   "lineHeightPx": 20,
                   "lineHeightUnit": "PIXELS",
                   "textAlignHorizontal": "LEFT",
-                  "textAlignVertical": "TOP"
+                  "textAlignVertical": "TOP",
+                  "textAutoResize": "WIDTH_AND_HEIGHT"
                 },
-                "textAutoResize": "WIDTH_AND_HEIGHT",
                 "type": "TEXT"
               },
               {
@@ -1386,9 +1386,9 @@
                       "lineHeightPx": 24,
                       "lineHeightUnit": "PIXELS",
                       "textAlignHorizontal": "LEFT",
-                      "textAlignVertical": "TOP"
+                      "textAlignVertical": "TOP",
+                      "textAutoResize": "WIDTH_AND_HEIGHT"
                     },
-                    "textAutoResize": "WIDTH_AND_HEIGHT",
                     "type": "TEXT"
                   }
                 ],

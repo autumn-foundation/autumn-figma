@@ -172,11 +172,8 @@ fn todo_row_uses_props_and_calls_the_icon() {
             cond: "done".into(),
             body: vec![Item::Call(Call {
                 path: "super::components::icon_check".into(),
-                // The fixed 16px icon must not shrink in the row.
-                args: vec![Arg::Attrs(vec![(
-                    "class".into(),
-                    "fg-todo-row__done-icon".into()
-                )])],
+                // The icon root already has its fixed size: no class.
+                args: vec![Arg::Attrs(vec![])],
             })]
         }
     );
@@ -231,7 +228,7 @@ fn screen_applies_bindings() {
                 Arg::Path("super::components::ButtonSize::Small".into()),
                 Arg::Markup(vec![Item::Call(Call {
                     path: "super::components::icon_check".into(),
-                    args: vec![Arg::Attrs(vec![("class".into(), "fg-todos__icon".into())])],
+                    args: vec![Arg::Attrs(vec![])],
                 })]),
                 Arg::Str("Add".into()),
                 Arg::Bool(true),
@@ -843,4 +840,22 @@ fn a_text_layer_as_an_input_uses_a_placeholder() {
     )
     .unwrap_err();
     assert_eq!(err.kind(), ErrorKind::Binding);
+}
+
+#[test]
+fn a_frame_with_a_variable_mode_gets_data_theme() {
+    let file = FileResponse::from_json(SNAPSHOT).unwrap();
+    let vars = VariablesResponse::from_json(VARIABLES).unwrap();
+    let mut file = file;
+    file.document.children[1].children[0]
+        .explicit_variable_modes
+        .insert("VariableCollectionId:1:0".into(), "1:1".into());
+    let config = Config::from_toml_str(CONFIG, Path::new("/app")).unwrap();
+    let l = lower(&file, Some(&vars), &config).unwrap();
+    let page = root(single(func(&l, "screens", "todos")));
+    assert!(
+        page.attrs.contains(&("data-theme".into(), "dark".into())),
+        "{:?}",
+        page.attrs
+    );
 }

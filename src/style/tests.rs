@@ -79,7 +79,11 @@ fn vertical_wrap_and_alignment() {
     );
     assert_eq!(d.get("flex-direction"), Some("column"));
     assert_eq!(d.get("flex-wrap"), Some("wrap"));
-    assert_eq!(d.get("gap"), Some("4px 10px"));
+    assert_eq!(
+        d.get("gap"),
+        Some("0 10px"),
+        "space-between ignores the item spacing"
+    );
     assert_eq!(d.get("padding"), Some("3px 2px 4px 1px"));
     assert_eq!(d.get("justify-content"), Some("space-between"));
     assert_eq!(d.get("align-items"), Some("flex-end"));
@@ -254,7 +258,13 @@ fn fills_strokes_radius() {
         COMPONENT,
     );
     assert_eq!(d.get("background-color"), Some("rgba(255, 255, 255, 0.5)"));
-    assert_eq!(d.get("border"), Some("2px dashed #000000"));
+    assert_eq!(
+        d.get("border"),
+        None,
+        "an inside stroke takes no layout space"
+    );
+    assert_eq!(d.get("outline"), Some("2px dashed #000000"));
+    assert_eq!(d.get("outline-offset"), Some("-2px"));
     assert_eq!(d.get("border-radius"), Some("4px 4px 0 0"));
     assert_eq!(d.get("opacity"), Some("0.8"));
     assert_eq!(d.get("overflow"), Some("hidden"));
@@ -383,4 +393,199 @@ fn images_are_blocks() {
     assert_eq!(d.get("display"), Some("block"));
     assert_eq!(d.get("width"), Some("16px"));
     assert_eq!(d.get("background-color"), None, "the SVG has the fill");
+}
+
+fn vars_with_brand() -> TokenSet {
+    let vars = VariablesResponse::from_json(
+        r#"{"meta":{"variableCollections":{"C":{"id":"C","name":"T","defaultModeId":"m","modes":[{"modeId":"m","name":"V"}]}},
+            "variables":{"V:c":{"id":"V:c","name":"brand","variableCollectionId":"C","resolvedType":"COLOR","valuesByMode":{"m":{"r":1,"g":0,"b":0,"a":1}}},
+                         "V:r":{"id":"V:r","name":"radius","variableCollectionId":"C","resolvedType":"FLOAT","valuesByMode":{"m":6}}}}}"#,
+    )
+    .unwrap();
+    TokenSet::new(Some(&vars), &BTreeMap::new(), &mut Vec::new())
+}
+
+#[test]
+fn text_auto_resize_is_read_from_the_style() {
+    // Regression: the API puts textAutoResize in `style`, not on the node.
+    let r = run(
+        r#"{"id":"1","type":"TEXT","characters":"Hi",
+            "style":{"fontSize":16,"textAutoResize":"WIDTH_AND_HEIGHT"}}"#,
+        FLEX_ROW,
+        Role::Text,
+    );
+    assert_eq!(r.decls.get("white-space"), Some("nowrap"));
+    assert_eq!(r.decls.get("width"), None, "auto width hugs");
+}
+
+#[test]
+fn a_bound_color_keeps_the_paint_opacity() {
+    let r = run_with(
+        r#"{"id":"1","type":"RECTANGLE","fills":[{"type":"SOLID","opacity":0.1,"color":{"r":1,"g":0,"b":0},
+            "boundVariables":{"color":{"type":"VARIABLE_ALIAS","id":"V:c"}}}]}"#,
+        COMPONENT,
+        Role::Box,
+        vars_with_brand(),
+    );
+    assert_eq!(
+        r.decls.get("background-color"),
+        Some("color-mix(in srgb, var(--brand) 10%, transparent)")
+    );
+}
+
+#[test]
+fn stroke_alignment() {
+    let stroke = |extra: &str| {
+        decls(
+            &format!(
+                r#"{{"id":"1","type":"FRAME","strokes":[{{"type":"SOLID","color":{{"r":0,"g":0,"b":0}}}}],"strokeWeight":2{extra}}}"#
+            ),
+            COMPONENT,
+        )
+    };
+    let inside = stroke("");
+    assert_eq!(inside.get("box-shadow"), Some("inset 0 0 0 2px #000000"));
+    assert_eq!(inside.get("border"), None);
+    let outside = stroke(r#","strokeAlign":"OUTSIDE""#);
+    assert_eq!(outside.get("outline"), Some("2px solid #000000"));
+    assert_eq!(outside.get("outline-offset"), None);
+    let center = stroke(r#","strokeAlign":"CENTER""#);
+    assert_eq!(center.get("outline-offset"), Some("-1px"));
+    let in_layout = stroke(r#","strokesIncludedInLayout":true"#);
+    assert_eq!(in_layout.get("border"), Some("2px solid #000000"));
+    assert_eq!(in_layout.get("box-shadow"), None);
+}
+
+#[test]
+fn one_side_strokes() {
+    // Regression: a bottom divider became a border on four sides.
+    let bottom = r#""strokes":[{"type":"SOLID","color":{"r":0,"g":0,"b":0}}],"strokeWeight":1,
+        "individualStrokeWeights":{"top":0,"right":0,"bottom":1,"left":0}"#;
+    let d = decls(
+        &format!(r#"{{"id":"1","type":"FRAME",{bottom}}}"#),
+        COMPONENT,
+    );
+    assert_eq!(d.get("box-shadow"), Some("inset 0 -1px 0 0 #000000"));
+    let d = decls(
+        &format!(r#"{{"id":"1","type":"FRAME","strokesIncludedInLayout":true,{bottom}}}"#),
+        COMPONENT,
+    );
+    assert_eq!(d.get("border-bottom"), Some("1px solid #000000"));
+    assert_eq!(d.get("border"), None);
+}
+
+#[test]
+fn stroke_and_shadow_share_box_shadow() {
+    let d = decls(
+        r#"{"id":"1","type":"FRAME","strokes":[{"type":"SOLID","color":{"r":0,"g":0,"b":0}}],"strokeWeight":1,
+            "effects":[{"type":"DROP_SHADOW","color":{"r":0,"g":0,"b":0,"a":1},"offset":{"x":0,"y":2},"radius":4}]}"#,
+        COMPONENT,
+    );
+    assert_eq!(
+        d.get("box-shadow"),
+        Some("0 2px 4px 0 #000000, inset 0 0 0 1px #000000")
+    );
+}
+
+#[test]
+fn grid_tracks_and_children() {
+    let parent = decls(
+        r#"{"id":"1","type":"FRAME","layoutMode":"GRID","gridColumnCount":3,
+            "gridColumnsSizing":"120px 1fr 1fr","gridRowsSizing":"auto auto"}"#,
+        COMPONENT,
+    );
+    assert_eq!(parent.get("grid-template-columns"), Some("120px 1fr 1fr"));
+    assert_eq!(parent.get("grid-template-rows"), Some("auto auto"));
+    let hostile = decls(
+        r#"{"id":"1","type":"FRAME","layoutMode":"GRID","gridColumnCount":2,"gridColumnsSizing":"1fr; } body { x"}"#,
+        COMPONENT,
+    );
+    assert_eq!(
+        hostile.get("grid-template-columns"),
+        Some("repeat(2, minmax(0, 1fr))")
+    );
+    let child = decls(
+        r#"{"id":"2","type":"FRAME","gridColumnAnchorIndex":1,"gridRowAnchorIndex":0,"gridColumnSpan":2,
+            "gridChildHorizontalAlign":"CENTER","layoutSizingHorizontal":"HUG","layoutSizingVertical":"HUG"}"#,
+        Parent::Grid,
+    );
+    assert_eq!(child.get("grid-column"), Some("2 / span 2"));
+    assert_eq!(child.get("grid-row"), Some("1 / span 1"));
+    assert_eq!(child.get("justify-self"), Some("center"));
+    assert_eq!(
+        child.get("align-self"),
+        Some("start"),
+        "a hug child does not stretch"
+    );
+}
+
+#[test]
+fn flex_details() {
+    let hug = decls(
+        r#"{"id":"1","type":"FRAME","layoutSizingHorizontal":"HUG","layoutSizingVertical":"HUG"}"#,
+        FLEX_ROW,
+    );
+    assert_eq!(
+        hug.get("flex-shrink"),
+        Some("0"),
+        "Figma never shrinks a hug child"
+    );
+    let between = decls(
+        r#"{"id":"1","type":"FRAME","layoutMode":"HORIZONTAL","itemSpacing":8,"primaryAxisAlignItems":"SPACE_BETWEEN"}"#,
+        COMPONENT,
+    );
+    assert_eq!(between.get("gap"), None, "Figma ignores the spacing here");
+    let r = run(
+        r#"{"id":"1","type":"FRAME","layoutMode":"VERTICAL","itemSpacing":-4}"#,
+        COMPONENT,
+        Role::Box,
+    );
+    assert_eq!(r.decls.get("gap"), None);
+    assert!(
+        r.diags.iter().any(|d| d.message.contains("negative")),
+        "{:?}",
+        r.diags
+    );
+    let wrap = decls(
+        r#"{"id":"1","type":"FRAME","layoutMode":"HORIZONTAL","layoutWrap":"WRAP","counterAxisAlignContent":"SPACE_BETWEEN"}"#,
+        COMPONENT,
+    );
+    assert_eq!(wrap.get("align-content"), Some("space-between"));
+    let r = run(
+        r#"{"id":"1","type":"FRAME","rotation":0.5}"#,
+        COMPONENT,
+        Role::Box,
+    );
+    assert!(
+        r.diags.iter().any(|d| d.message.contains("rotation")),
+        "{:?}",
+        r.diags
+    );
+}
+
+#[test]
+fn nested_radius_bindings() {
+    let alias = r#"{"type":"VARIABLE_ALIAS","id":"V:r"}"#;
+    let r = run_with(
+        &format!(
+            r#"{{"id":"1","type":"FRAME","cornerRadius":6,"boundVariables":{{"rectangleCornerRadii":{{
+                "RECTANGLE_TOP_LEFT_CORNER_RADIUS":{alias},"RECTANGLE_TOP_RIGHT_CORNER_RADIUS":{alias},
+                "RECTANGLE_BOTTOM_RIGHT_CORNER_RADIUS":{alias},"RECTANGLE_BOTTOM_LEFT_CORNER_RADIUS":{alias}}}}}}}"#
+        ),
+        COMPONENT,
+        Role::Box,
+        vars_with_brand(),
+    );
+    assert_eq!(r.decls.get("border-radius"), Some("var(--radius)"));
+}
+
+#[test]
+fn percent_line_height_falls_back_to_px() {
+    // `lineHeightPercentFontSize` is absent when it is 100%.
+    let r = run(
+        r#"{"id":"1","type":"TEXT","style":{"fontSize":16,"lineHeightPx":16,"lineHeightUnit":"FONT_SIZE_%"}}"#,
+        COMPONENT,
+        Role::Text,
+    );
+    assert_eq!(r.decls.get("line-height"), Some("16px"));
 }

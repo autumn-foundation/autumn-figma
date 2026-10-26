@@ -25,12 +25,14 @@ def text(id_, name, chars, x, y, w, h, size=16, weight=400, lh=24, fill=None, st
     n = {"id": id_, "name": name, "type": "TEXT", "characters": chars, "absoluteBoundingBox": bb(x, y, w, h),
          "style": {"fontFamily": "Inter", "fontPostScriptName": None, "fontWeight": weight, "fontSize": size,
                    "lineHeightPx": lh, "lineHeightUnit": "PIXELS", "letterSpacing": 0,
-                   "textAlignHorizontal": "LEFT", "textAlignVertical": "TOP"},
-         "textAutoResize": "WIDTH_AND_HEIGHT", "layoutSizingHorizontal": "HUG", "layoutSizingVertical": "HUG",
+                   "textAlignHorizontal": "LEFT", "textAlignVertical": "TOP",
+                   "textAutoResize": "WIDTH_AND_HEIGHT"},
+         "layoutSizingHorizontal": "HUG", "layoutSizingVertical": "HUG",
          "fills": [fill or solid(0.067, 0.094, 0.153)]}
     if style_id: n["styles"] = {"text": style_id}
     if refs: n["componentPropertyReferences"] = refs
     if extra: n.update(extra)
+    if n.get("layoutSizingHorizontal") == "FILL": n["style"]["textAutoResize"] = "HEIGHT"
     return n
 
 def button_variant(id_, name, x, pad_v, pad_h, radius, size, icon_id, label_id):
@@ -76,7 +78,7 @@ components_page = {"id": "1:0", "name": "Components", "type": "CANVAS", "childre
           "layoutSizingHorizontal": "FIXED", "layoutSizingVertical": "FIXED",
           "fills": [], "strokes": [solid(*GRAY)], "strokeWeight": 2},
          text("1:42", "Title", "Buy milk", 48, 212, 260, 24, refs={"characters": "Title#2:0"},
-              extra={"layoutSizingHorizontal": "FILL", "textAutoResize": "HEIGHT"}),
+              extra={"layoutSizingHorizontal": "FILL"}),
          dict(icon_instance("1:43", 330, 216, refs={"visible": "Done#2:1"}, visible=False), name="Done icon"),
      ]},
 ]}

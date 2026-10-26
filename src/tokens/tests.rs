@@ -154,3 +154,19 @@ fn style_renames_apply() {
 fn output_is_stable() {
     assert_eq!(set(&[]).0.css(), set(&[]).0.css());
 }
+
+#[test]
+fn explicit_modes_map_to_data_theme() {
+    let (set, _) = set(&[]);
+    let modes = BTreeMap::from([("C:1".to_owned(), "m:dark".to_owned())]);
+    assert_eq!(set.mode_attr(&modes).as_deref(), Some("dark"));
+    let light = BTreeMap::from([("C:1".to_owned(), "m:light".to_owned())]);
+    assert_eq!(set.mode_attr(&light).as_deref(), Some("light"));
+    assert_eq!(set.mode_attr(&BTreeMap::new()), None);
+    // A frame set to Light inside a dark area needs the light values back.
+    let css = set.css();
+    assert!(
+        css.starts_with(":root,\n[data-theme=\"light\"] {\n"),
+        "{css}"
+    );
+}

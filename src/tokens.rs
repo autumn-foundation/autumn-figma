@@ -31,6 +31,10 @@ pub struct TokenSet {
     /// Declarations by mode slug.
     modes: BTreeMap<String, Vec<(String, String)>>,
     renames: BTreeMap<String, String>,
+    /// Mode slug by collection id and mode id.
+    mode_slugs: BTreeMap<(String, String), String>,
+    /// Slugs of default modes in collections with more than one mode.
+    default_slugs: std::collections::BTreeSet<String>,
 }
 
 impl TokenSet {
@@ -57,6 +61,16 @@ impl TokenSet {
 
     fn add_variables(&mut self, vars: &VariablesResponse, diagnostics: &mut Vec<Diagnostic>) {
         let collections = &vars.meta.variable_collections;
+        for collection in collections.values() {
+            for mode in &collection.modes {
+                let mode_slug = slug(&mode.name);
+                if mode.mode_id == collection.default_mode_id && collection.modes.len() > 1 {
+                    self.default_slugs.insert(mode_slug.clone());
+                }
+                self.mode_slugs
+                    .insert((collection.id.clone(), mode.mode_id.clone()), mode_slug);
+            }
+        }
         let mut sorted: Vec<&Variable> = vars
             .meta
             .variables
@@ -158,6 +172,17 @@ impl TokenSet {
         }
     }
 
+    /// The `data-theme` value for a layer that sets variable modes
+    /// (`explicitVariableModes`: collection id to mode id). `None` when no
+    /// mode is known.
+    #[must_use]
+    pub fn mode_attr(&self, modes: &BTreeMap<String, String>) -> Option<String> {
+        modes
+            .iter()
+            .find_map(|(collection, mode)| self.mode_slugs.get(&(collection.clone(), mode.clone())))
+            .cloned()
+    }
+
     /// `var(--name)` for a variable id, if the set has it.
     #[must_use]
     pub fn variable(&self, id: &str) -> Option<String> {
@@ -199,7 +224,13 @@ impl TokenSet {
             return String::new();
         }
         let mut out = String::new();
-        block(&mut out, ":root", &self.root, "");
+        // A layer can set the default mode inside another mode, so the
+        // default values also go on `[data-theme="<default>"]`.
+        let mut root = ":root".to_owned();
+        for mode in &self.default_slugs {
+            let _ = write!(root, ",\n[data-theme=\"{mode}\"]");
+        }
+        block(&mut out, &root, &self.root, "");
         for (mode, decls) in &self.modes {
             out.push('\n');
             block(&mut out, &format!("[data-theme=\"{mode}\"]"), decls, "");

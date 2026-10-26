@@ -127,3 +127,49 @@ async fn assets_are_downloaded_in_batches_without_the_token() {
         .unwrap();
     assert_eq!(png.query["ids"], "2:11");
 }
+
+#[tokio::test]
+async fn a_second_pull_reuses_the_page_ids() {
+    // The depth=1 call costs a Tier 1 request. The snapshot already has
+    // the page ids.
+    let (_dir, config) = app(CONFIG);
+    let stub = stub(true).await;
+    pull(&config, &client(&stub)).await.unwrap();
+    let first = stub
+        .seen()
+        .iter()
+        .filter(|s| s.query.contains_key("depth"))
+        .count();
+    pull(&config, &client(&stub)).await.unwrap();
+    let second = stub
+        .seen()
+        .iter()
+        .filter(|s| s.query.contains_key("depth"))
+        .count();
+    assert_eq!((first, second), (1, 1), "no second depth=1 call");
+}
+
+#[tokio::test]
+async fn a_failed_pull_leaves_the_old_snapshot() {
+    // The snapshot must not change when the assets fail, or snapshot and
+    // assets disagree.
+    let (dir, config) = app(CONFIG);
+    fs::create_dir_all(dir.path().join("figma")).unwrap();
+    fs::write(dir.path().join("figma/snapshot.json"), "{\"old\":1}").unwrap();
+    let stub = start(Script {
+        file: SNAPSHOT.into(),
+        file_depth1: Some(DEPTH1.into()),
+        variables: Some(VARIABLES.into()),
+        images: BTreeMap::from([(
+            "1:30".to_owned(),
+            Some("http://example.com/x.svg".to_owned()),
+        )]),
+        ..Script::default()
+    })
+    .await;
+    assert!(pull(&config, &client(&stub)).await.is_err());
+    assert_eq!(
+        fs::read_to_string(dir.path().join("figma/snapshot.json")).unwrap(),
+        "{\"old\":1}"
+    );
+}

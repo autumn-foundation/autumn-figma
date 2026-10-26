@@ -44,30 +44,28 @@ pub async fn pull(config: &Config, client: &FigmaClient) -> Result<PullReport> {
         snapshot: config.snapshot.clone(),
         ..PullReport::default()
     };
+    // Fetch everything first. Write only when all fetches succeed, so the
+    // snapshot and the assets always agree.
     let ids = page_ids(config, client).await?;
     let body = client.file(key, &ids, None).await?;
-    let text = normalize_json(&body)?;
-    let file = FileResponse::from_json(&text)?;
-    write(&config.snapshot, text.as_bytes())?;
+    let snapshot = normalize_json(&body)?;
+    let file = FileResponse::from_json(&snapshot)?;
 
-    let variables = if let Some(body) = client.variables(key).await? {
-        let text = normalize_json(&body)?;
-        let vars = VariablesResponse::from_json(&text)?;
-        write(&config.variables_snapshot, text.as_bytes())?;
-        report.variables = Some(config.variables_snapshot.clone());
-        Some(vars)
+    let variables_text = if let Some(body) = client.variables(key).await? {
+        Some(normalize_json(&body)?)
     } else {
-        if config.variables_snapshot.exists() {
-            fs::remove_file(&config.variables_snapshot)
-                .map_err(|e| Error::io(&config.variables_snapshot, &e))?;
-        }
         report.notices.push(format!(
             "Figma gave no variables: the variables API needs an Enterprise plan and the file_variables:read scope on {TOKEN_ENV}; tokens come from styles only"
         ));
         None
     };
+    let variables = variables_text
+        .as_deref()
+        .map(VariablesResponse::from_json)
+        .transpose()?;
 
     let lowered = lower(&file, variables.as_ref(), config)?;
+    let mut downloads = Vec::new();
     for format in [Format::Svg, Format::Png] {
         let assets: Vec<_> = lowered
             .assets
@@ -83,17 +81,32 @@ pub async fn pull(config: &Config, client: &FigmaClient) -> Result<PullReport> {
                 let url = images.images.get(&asset.node_id).cloned().flatten();
                 let Some(url) = url else {
                     report.notices.push(format!(
-                        "Figma could not render node {} ({}); the asset is missing",
+                        "Figma cannot render node {} ({}); the asset is missing",
                         asset.node_id, asset.file_name
                     ));
                     continue;
                 };
                 let bytes = client.download(&url).await?;
-                let path = config.assets_dir.join(&asset.file_name);
-                write(&path, &bytes)?;
-                report.assets.push(path);
+                downloads.push((config.assets_dir.join(&asset.file_name), bytes));
             }
         }
+    }
+
+    write(&config.snapshot, snapshot.as_bytes())?;
+    match &variables_text {
+        Some(text) => {
+            write(&config.variables_snapshot, text.as_bytes())?;
+            report.variables = Some(config.variables_snapshot.clone());
+        }
+        None if config.variables_snapshot.exists() => {
+            fs::remove_file(&config.variables_snapshot)
+                .map_err(|e| Error::io(&config.variables_snapshot, &e))?;
+        }
+        None => {}
+    }
+    for (path, bytes) in downloads {
+        write(&path, &bytes)?;
+        report.assets.push(path);
     }
     Ok(report)
 }
@@ -102,6 +115,10 @@ pub async fn pull(config: &Config, client: &FigmaClient) -> Result<PullReport> {
 async fn page_ids(config: &Config, client: &FigmaClient) -> Result<Vec<String>> {
     if config.pages.is_empty() {
         return Ok(Vec::new());
+    }
+    // Page ids do not change. The last snapshot saves a depth=1 request.
+    if let Some(ids) = known_page_ids(config) {
+        return Ok(ids);
     }
     let body = client.file(&config.file_key, &[], Some(1)).await?;
     let text = std::str::from_utf8(&body)
@@ -131,6 +148,24 @@ async fn page_ids(config: &Config, client: &FigmaClient) -> Result<Vec<String>> 
                         ),
                     )
                 })
+        })
+        .collect()
+}
+
+/// The ids of the selected pages from the last snapshot, when it has all
+/// of them.
+fn known_page_ids(config: &Config) -> Option<Vec<String>> {
+    let text = fs::read_to_string(&config.snapshot).ok()?;
+    let file = FileResponse::from_json(&text).ok()?;
+    config
+        .pages
+        .iter()
+        .map(|wanted| {
+            file.document
+                .children
+                .iter()
+                .find(|p| p.kind == NodeType::Canvas && p.name.trim() == wanted.trim())
+                .map(|p| p.id.clone())
         })
         .collect()
 }

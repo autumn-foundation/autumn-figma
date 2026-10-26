@@ -9,7 +9,7 @@ use std::collections::BTreeMap;
 use crate::diagnostics::Diagnostic;
 use crate::model::{
     Effect, EffectType, LayoutMode, Node, NodeType, Paint, PaintType, Rect, Sizing, StyleMeta,
-    TypeStyle,
+    TypeStyle, alias_id,
 };
 use crate::names::{css_str, num, px};
 use crate::tokens::{TokenSet, css_color};
@@ -91,6 +91,12 @@ pub struct StyleCx<'a> {
 pub fn node_decls(node: &Node, parent: Parent, role: Role, cx: &mut StyleCx<'_>) -> Decls {
     let mut d = Decls::default();
     let absolute_box = role == Role::Box && places_children_absolutely(node);
+    if node.rotation.is_some_and(|r| r.abs() > 0.01) {
+        cx.diagnostics.push(Diagnostic::warning(
+            cx.path,
+            "rotation is not supported; the layer renders without it",
+        ));
+    }
     match role {
         Role::Image => d.push("display", "block"),
         Role::Box => layout(node, absolute_box, &mut d, cx),
@@ -154,7 +160,7 @@ fn sizing(node: &Node, horizontal: bool) -> Sizing {
         return s;
     }
     if node.kind == NodeType::Text {
-        return match (node.text_auto_resize.as_deref(), horizontal) {
+        return match (node.text_resize(), horizontal) {
             (Some("WIDTH_AND_HEIGHT"), _) | (Some("HEIGHT"), false) => Sizing::Hug,
             _ => Sizing::Fixed,
         };
@@ -190,7 +196,16 @@ fn layout(node: &Node, absolute_box: bool, d: &mut Decls, cx: &mut StyleCx<'_>) 
             if wrap {
                 d.push("flex-wrap", "wrap");
             }
-            let item = spacing(node, "itemSpacing", node.item_spacing, cx);
+            // Figma ignores the item spacing for space-between.
+            let between = node.primary_axis_align_items.as_deref() == Some("SPACE_BETWEEN");
+            if node.item_spacing.is_some_and(|s| s < 0.0) {
+                cx.diagnostics.push(Diagnostic::warning(
+                    cx.path,
+                    "negative item spacing (overlap) is not supported; the items do not overlap",
+                ));
+            }
+            let item = spacing(node, "itemSpacing", node.item_spacing, cx)
+                .filter(|_| !between && !node.item_spacing.is_some_and(|s| s < 0.0));
             let counter =
                 spacing(node, "counterAxisSpacing", node.counter_axis_spacing, cx).filter(|_| wrap);
             match (item, counter) {
@@ -200,6 +215,15 @@ fn layout(node: &Node, absolute_box: bool, d: &mut Decls, cx: &mut StyleCx<'_>) 
                 (None, Some(counter)) if row => d.push("gap", format!("{counter} 0")),
                 (None, Some(counter)) => d.push("gap", format!("0 {counter}")),
                 (None, None) => {}
+            }
+            if wrap {
+                let content = if node.counter_axis_align_content.as_deref() == Some("SPACE_BETWEEN")
+                {
+                    "space-between"
+                } else {
+                    "flex-start"
+                };
+                d.push("align-content", content);
             }
             match node.primary_axis_align_items.as_deref() {
                 Some("CENTER") => d.push("justify-content", "center"),
@@ -220,10 +244,22 @@ fn layout(node: &Node, absolute_box: bool, d: &mut Decls, cx: &mut StyleCx<'_>) 
         Some(LayoutMode::Grid) => {
             d.push("display", "grid");
             let columns = node.grid_column_count.unwrap_or(1).max(1);
-            d.push(
-                "grid-template-columns",
-                format!("repeat({columns}, minmax(0, 1fr))"),
-            );
+            let template = node
+                .grid_columns_sizing
+                .as_deref()
+                .filter(|t| is_track_list(t))
+                .map_or_else(
+                    || format!("repeat({columns}, minmax(0, 1fr))"),
+                    str::to_owned,
+                );
+            d.push("grid-template-columns", template);
+            if let Some(rows) = node
+                .grid_rows_sizing
+                .as_deref()
+                .filter(|t| is_track_list(t))
+            {
+                d.push("grid-template-rows", rows);
+            }
             let row_gap = node.grid_row_gap.unwrap_or(0.0);
             let column_gap = node.grid_column_gap.unwrap_or(0.0);
             if row_gap > 0.0 || column_gap > 0.0 {
@@ -247,6 +283,15 @@ fn layout(node: &Node, absolute_box: bool, d: &mut Decls, cx: &mut StyleCx<'_>) 
     }
 }
 
+/// True for a grid track list that is safe to copy into CSS: letters,
+/// digits, spaces, and `( ) , . % -` only.
+fn is_track_list(text: &str) -> bool {
+    !text.trim().is_empty()
+        && text
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || " (),.%-".contains(c))
+}
+
 /// A spacing value: a bound variable, or px. `None` for zero.
 fn spacing(node: &Node, field: &str, value: Option<f64>, cx: &StyleCx<'_>) -> Option<String> {
     if let Some(var) = node
@@ -263,8 +308,12 @@ fn placement(node: &Node, parent: Parent, role: Role, absolute_box: bool, d: &mu
     placement_from_box(node, parent, role, absolute_box, &mut placed);
     if node.absolute_bounding_box.is_none() {
         // Without a box, a size or an offset would be 0. Leave them out.
+        let explicit =
+            node.layout_sizing_horizontal.is_some() || node.layout_sizing_vertical.is_some();
         placed.0.retain(|(p, v)| match p.as_str() {
-            "flex" | "align-self" => true,
+            "flex" | "align-self" | "justify-self" | "grid-column" | "grid-row" => true,
+            // From explicit hug sizing only. A guess must not pin the size.
+            "flex-shrink" => explicit,
             "min-width" | "min-height" => v == "0",
             "width" => v == "100%",
             _ => false,
@@ -290,13 +339,26 @@ fn placement_from_box(node: &Node, parent: Parent, role: Role, absolute_box: boo
                 d.push("min-height", px(b.height));
             }
         }
-        Parent::Root { screen: false } | Parent::Grid => {
+        Parent::Root { screen: false } => {
             if fixed_if(sizing(node, true)) == Sizing::Fixed {
                 d.push("width", px(b.width));
             }
             if fixed_if(sizing(node, false)) == Sizing::Fixed {
                 d.push("height", px(b.height));
             }
+            // A component never shrinks below its size in a flex parent.
+            d.push("flex-shrink", "0");
+        }
+        Parent::Grid => {
+            let h = fixed_if(sizing(node, true));
+            let v = fixed_if(sizing(node, false));
+            if h == Sizing::Fixed {
+                d.push("width", px(b.width));
+            }
+            if v == Sizing::Fixed {
+                d.push("height", px(b.height));
+            }
+            grid_cell(node, h, v, d);
         }
         Parent::Flex { row } => {
             let old_fill = |explicit: Option<Sizing>, yes: bool| explicit.is_none() && yes;
@@ -335,7 +397,9 @@ fn placement_from_box(node: &Node, parent: Parent, role: Role, absolute_box: boo
                     d.push(main_size.0, px(main_size.1));
                     d.push("flex-shrink", "0");
                 }
-                Sizing::Hug | Sizing::Other => {}
+                // Figma never shrinks a hug child below its content.
+                Sizing::Hug => d.push("flex-shrink", "0"),
+                Sizing::Other => {}
             }
             match cross {
                 Sizing::Fill => d.push("align-self", "stretch"),
@@ -350,6 +414,33 @@ fn placement_from_box(node: &Node, parent: Parent, role: Role, absolute_box: boo
             d.push("width", px(b.width));
             d.push("height", px(b.height));
         }
+    }
+}
+
+/// The cell and the alignment of a grid child.
+fn grid_cell(node: &Node, h: Sizing, v: Sizing, d: &mut Decls) {
+    if let Some(column) = node.grid_column_anchor_index {
+        let span = node.grid_column_span.unwrap_or(1).max(1);
+        d.push("grid-column", format!("{} / span {span}", column + 1));
+    }
+    if let Some(row) = node.grid_row_anchor_index {
+        let span = node.grid_row_span.unwrap_or(1).max(1);
+        d.push("grid-row", format!("{} / span {span}", row + 1));
+    }
+    // A grid item stretches by default. A child that does not fill its
+    // cell keeps its own size at the start.
+    let align = |figma: Option<&str>, size: Sizing| match figma {
+        Some("CENTER") => Some("center"),
+        Some("MAX") => Some("end"),
+        Some("MIN") => Some("start"),
+        _ if size != Sizing::Fill => Some("start"),
+        _ => None,
+    };
+    if let Some(a) = align(node.grid_child_horizontal_align.as_deref(), h) {
+        d.push("justify-self", a);
+    }
+    if let Some(a) = align(node.grid_child_vertical_align.as_deref(), v) {
+        d.push("align-self", a);
     }
 }
 
@@ -384,6 +475,10 @@ fn paint_color(
     cx: &mut StyleCx<'_>,
 ) -> Option<String> {
     if let Some(var) = paint.color_variable().and_then(|id| cx.tokens.variable(id)) {
+        if paint.opacity < 1.0 {
+            let percent = num((paint.opacity * 100.0).clamp(0.0, 100.0));
+            return Some(format!("color-mix(in srgb, {var} {percent}%, transparent)"));
+        }
         return Some(var);
     }
     let literal = paint.color.map(|c| css_color(&c, paint.opacity));
@@ -427,6 +522,10 @@ fn paint(node: &Node, role: Role, d: &mut Decls, cx: &mut StyleCx<'_>) {
     }
 }
 
+/// The stroke. Figma draws it outside the layout, so the default is an
+/// inset shadow (`INSIDE`) or an outline (`OUTSIDE`, `CENTER`, dashed). Only
+/// a stroke that takes layout space becomes a `border`. An inset shadow goes
+/// in `box-shadow`, and [`effects`] adds the effect shadows before it.
 fn stroke(node: &Node, d: &mut Decls, cx: &mut StyleCx<'_>) {
     let weight = node.stroke_weight.unwrap_or(1.0);
     let Some(top) = Node::top_paint(&node.strokes) else {
@@ -435,13 +534,66 @@ fn stroke(node: &Node, d: &mut Decls, cx: &mut StyleCx<'_>) {
     if top.kind != PaintType::Solid || weight <= 0.0 {
         return;
     }
-    if let Some(color) = paint_color(node, top, "stroke", cx) {
-        let line = if node.stroke_dashes.is_empty() {
-            "solid"
-        } else {
-            "dashed"
-        };
+    let Some(color) = paint_color(node, top, "stroke", cx) else {
+        return;
+    };
+    let line = if node.stroke_dashes.is_empty() {
+        "solid"
+    } else {
+        "dashed"
+    };
+    let align = node.stroke_align.as_deref().unwrap_or("INSIDE");
+    if let Some(sides) = node.individual_stroke_weights.filter(|w| {
+        [w.top, w.right, w.bottom, w.left]
+            .iter()
+            .any(|v| (v - weight).abs() > f64::EPSILON)
+    }) {
+        let each = [
+            ("top", sides.top, (0.0, 1.0)),
+            ("right", sides.right, (-1.0, 0.0)),
+            ("bottom", sides.bottom, (0.0, -1.0)),
+            ("left", sides.left, (1.0, 0.0)),
+        ];
+        if node.strokes_included_in_layout {
+            for (side, w, _) in each.iter().filter(|(_, w, _)| *w > 0.0) {
+                d.push(
+                    &format!("border-{side}"),
+                    format!("{} {line} {color}", px(*w)),
+                );
+            }
+            return;
+        }
+        let outside = align == "OUTSIDE";
+        let shadows: Vec<String> = each
+            .iter()
+            .filter(|(_, w, _)| *w > 0.0)
+            .map(|(_, w, (x, y))| {
+                let sign = if outside { -1.0 } else { 1.0 };
+                let inset = if outside { "" } else { "inset " };
+                format!(
+                    "{inset}{} {} 0 0 {color}",
+                    px(x * w * sign),
+                    px(y * w * sign)
+                )
+            })
+            .collect();
+        d.push("box-shadow", shadows.join(", "));
+        return;
+    }
+    if node.strokes_included_in_layout {
         d.push("border", format!("{} {line} {color}", px(weight)));
+    } else if align == "INSIDE" && line == "solid" {
+        d.push("box-shadow", format!("inset 0 0 0 {} {color}", px(weight)));
+    } else {
+        d.push("outline", format!("{} {line} {color}", px(weight)));
+        let offset = match align {
+            "INSIDE" => -weight,
+            "CENTER" => -weight / 2.0,
+            _ => 0.0,
+        };
+        if offset != 0.0 {
+            d.push("outline-offset", px(offset));
+        }
     }
 }
 
@@ -456,7 +608,24 @@ fn radius(node: &Node, d: &mut Decls, cx: &StyleCx<'_>) {
         "bottomRightRadius",
         "bottomLeftRadius",
     ];
-    let bound: Vec<Option<&str>> = corners.iter().map(|c| node.bound_variable(c)).collect();
+    let nested = [
+        "RECTANGLE_TOP_LEFT_CORNER_RADIUS",
+        "RECTANGLE_TOP_RIGHT_CORNER_RADIUS",
+        "RECTANGLE_BOTTOM_RIGHT_CORNER_RADIUS",
+        "RECTANGLE_BOTTOM_LEFT_CORNER_RADIUS",
+    ];
+    let radii_map = node
+        .bound_variables
+        .get("rectangleCornerRadii")
+        .and_then(serde_json::Value::as_object);
+    let bound: Vec<Option<&str>> = corners
+        .iter()
+        .zip(nested)
+        .map(|(flat, deep)| {
+            node.bound_variable(flat)
+                .or_else(|| radii_map.and_then(|m| m.get(deep)).and_then(alias_id))
+        })
+        .collect();
     if let Some(Some(first)) = bound.first()
         && bound.iter().all(|b| *b == Some(*first))
         && let Some(var) = cx.tokens.variable(first)
@@ -520,14 +689,23 @@ fn effects(node: &Node, role: Role, d: &mut Decls, cx: &mut StyleCx<'_>) {
         .filter(|e| matches!(e.kind, EffectType::DropShadow | EffectType::InnerShadow))
         .map(|e| shadow(e, false))
         .collect();
-    if !shadows.is_empty() {
+    // The stroke shadow, if any, goes after the effect shadows.
+    let stroke =
+        d.0.iter()
+            .position(|(p, _)| p == "box-shadow")
+            .map(|i| d.0.remove(i).1);
+    let effect = (!shadows.is_empty()).then(|| {
         let literal = shadows.join(", ");
         let styled = node.styles.get("effect").and_then(|id| {
             let meta = cx.styles.get(id)?;
             let value = literal.clone();
             cx.tokens.style(id, &meta.name, || Some(value))
         });
-        d.push("box-shadow", styled.unwrap_or(literal));
+        styled.unwrap_or(literal)
+    });
+    let all: Vec<String> = effect.into_iter().chain(stroke).collect();
+    if !all.is_empty() {
+        d.push("box-shadow", all.join(", "));
     }
     for e in &visible {
         match e.kind {
@@ -558,7 +736,11 @@ fn font_shorthand(style: &TypeStyle) -> Option<String> {
 
 fn line_height(style: &TypeStyle) -> Option<String> {
     match style.line_height_unit.as_deref() {
-        Some("FONT_SIZE_%") => style.line_height_percent_font_size.map(|p| num(p / 100.0)),
+        // Figma leaves the percent out when it is 100. The px value stays.
+        Some("FONT_SIZE_%") => style
+            .line_height_percent_font_size
+            .map(|p| num(p / 100.0))
+            .or_else(|| style.line_height_px.map(px)),
         Some("INTRINSIC_%") => None,
         _ => style.line_height_px.map(px),
     }
@@ -614,7 +796,7 @@ fn typography(node: &Node, d: &mut Decls, cx: &mut StyleCx<'_>) {
         Some("TITLE") => d.push("text-transform", "capitalize"),
         _ => {}
     }
-    if node.text_auto_resize.as_deref() == Some("WIDTH_AND_HEIGHT") {
+    if node.text_resize() == Some("WIDTH_AND_HEIGHT") {
         d.push("white-space", "nowrap");
     }
 }

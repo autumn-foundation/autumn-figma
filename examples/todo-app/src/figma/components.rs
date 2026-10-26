@@ -64,7 +64,7 @@ pub fn todo_row(
             div class="fg-todo-row__checkbox" {}
             span class="fg-todo-row__title" { (title) }
             @if done {
-                (super::components::icon_check(&super::Attrs { class: Some("fg-todo-row__done-icon"), ..super::Attrs::NONE }))
+                (super::components::icon_check(&super::Attrs::NONE))
             }
         }
     }

@@ -167,6 +167,8 @@ impl NodeType {
 }
 
 /// A node in the document tree.
+// The fields mirror the Figma API, which has these booleans.
+#[allow(clippy::struct_excessive_bools)]
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Node {
@@ -199,6 +201,15 @@ pub struct Node {
     /// Dash pattern of the stroke.
     #[serde(default)]
     pub stroke_dashes: Vec<f64>,
+    /// `INSIDE` (the default), `OUTSIDE`, or `CENTER`.
+    #[serde(default)]
+    pub stroke_align: Option<String>,
+    /// True when the stroke takes space in auto layout.
+    #[serde(default)]
+    pub strokes_included_in_layout: bool,
+    /// Stroke widths per side, when they differ.
+    #[serde(default)]
+    pub individual_stroke_weights: Option<StrokeWeights>,
     /// One radius for all corners.
     #[serde(default)]
     pub corner_radius: Option<f64>,
@@ -268,6 +279,39 @@ pub struct Node {
     /// Grid column count.
     #[serde(default)]
     pub grid_column_count: Option<u32>,
+    /// Grid column tracks as a CSS `grid-template-columns` value.
+    #[serde(default)]
+    pub grid_columns_sizing: Option<String>,
+    /// Grid row tracks as a CSS `grid-template-rows` value.
+    #[serde(default)]
+    pub grid_rows_sizing: Option<String>,
+    /// The first grid column of a child (from 0).
+    #[serde(default)]
+    pub grid_column_anchor_index: Option<u32>,
+    /// The first grid row of a child (from 0).
+    #[serde(default)]
+    pub grid_row_anchor_index: Option<u32>,
+    /// The grid columns that a child spans.
+    #[serde(default)]
+    pub grid_column_span: Option<u32>,
+    /// The grid rows that a child spans.
+    #[serde(default)]
+    pub grid_row_span: Option<u32>,
+    /// Horizontal alignment of a grid child: `AUTO`, `MIN`, `CENTER`, `MAX`.
+    #[serde(default)]
+    pub grid_child_horizontal_align: Option<String>,
+    /// Vertical alignment of a grid child: `AUTO`, `MIN`, `CENTER`, `MAX`.
+    #[serde(default)]
+    pub grid_child_vertical_align: Option<String>,
+    /// Alignment of wrapped rows: `AUTO` or `SPACE_BETWEEN`.
+    #[serde(default)]
+    pub counter_axis_align_content: Option<String>,
+    /// Rotation in degrees.
+    #[serde(default)]
+    pub rotation: Option<f64>,
+    /// Variable modes that this layer sets, by collection id.
+    #[serde(default)]
+    pub explicit_variable_modes: BTreeMap<String, String>,
     /// Grid row gap.
     #[serde(default)]
     pub grid_row_gap: Option<f64>,
@@ -318,6 +362,16 @@ impl Node {
     #[must_use]
     pub fn bound_variable(&self, field: &str) -> Option<&str> {
         alias_id(self.bound_variables.get(field)?)
+    }
+
+    /// How the text resizes. The API puts it in `style`. Older files put it
+    /// on the node.
+    #[must_use]
+    pub fn text_resize(&self) -> Option<&str> {
+        self.style
+            .as_ref()
+            .and_then(|s| s.text_auto_resize.as_deref())
+            .or(self.text_auto_resize.as_deref())
     }
 
     /// The top visible paint of a paint list.
@@ -563,6 +617,26 @@ pub struct TypeStyle {
     /// `UPPER`, `LOWER`, or `TITLE`.
     #[serde(default)]
     pub text_case: Option<String>,
+    /// How text resizes: `WIDTH_AND_HEIGHT`, `HEIGHT`, `NONE`, `TRUNCATE`.
+    #[serde(default)]
+    pub text_auto_resize: Option<String>,
+}
+
+/// Stroke widths per side.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Deserialize)]
+pub struct StrokeWeights {
+    /// Top.
+    #[serde(default)]
+    pub top: f64,
+    /// Right.
+    #[serde(default)]
+    pub right: f64,
+    /// Bottom.
+    #[serde(default)]
+    pub bottom: f64,
+    /// Left.
+    #[serde(default)]
+    pub left: f64,
 }
 
 /// The type of a component property.

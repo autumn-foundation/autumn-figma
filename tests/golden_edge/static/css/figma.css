@@ -16,75 +16,90 @@
   display: flex;
   flex-direction: row;
   align-items: flex-start;
+  flex-shrink: 0;
   background-color: #3366e6;
 }
 
 .fg-kind--kind-primary-button__label {
+  flex-shrink: 0;
   color: #000000;
   font-family: "Inter", system-ui, sans-serif;
   font-weight: 400;
   font-size: 14px;
   line-height: 20px;
+  white-space: nowrap;
 }
 
 .fg-kind--kind-secondary-button {
   display: flex;
   flex-direction: row;
   align-items: flex-start;
+  flex-shrink: 0;
   background-color: #3366e6;
 }
 
 .fg-kind--kind-secondary-button__label {
+  flex-shrink: 0;
   color: #000000;
   font-family: "Inter", system-ui, sans-serif;
   font-weight: 400;
   font-size: 14px;
   line-height: 20px;
+  white-space: nowrap;
 }
 
 .fg-kind--kind-tertiary-button {
   display: flex;
   flex-direction: row;
   align-items: flex-start;
+  flex-shrink: 0;
   background-color: #3366e6;
 }
 
 .fg-kind--kind-tertiary-button__label {
+  flex-shrink: 0;
   color: #000000;
   font-family: "Inter", system-ui, sans-serif;
   font-weight: 400;
   font-size: 14px;
   line-height: 20px;
+  white-space: nowrap;
 }
 
 .fg-toggle--state-on {
   display: flex;
   flex-direction: row;
   align-items: flex-start;
+  flex-shrink: 0;
   background-color: #3366e6;
 }
 
 .fg-toggle--state-on__label {
+  flex-shrink: 0;
   color: #000000;
   font-family: "Inter", system-ui, sans-serif;
   font-weight: 400;
   font-size: 14px;
   line-height: 20px;
+  white-space: nowrap;
 }
 
 .fg-odd-quoted-set--no-equals {
   display: flex;
   flex-direction: row;
   align-items: flex-start;
+  flex-shrink: 0;
   background-color: #3366e6;
 }
 
 .fg-odd-quoted-set--no-equals__label {
+  flex-shrink: 0;
   color: #000000;
   font-family: "Inter", system-ui, sans-serif;
   font-weight: 400;
   font-size: 14px;
   line-height: 20px;
+  white-space: nowrap;
 }
 
 .fg-card {
@@ -93,14 +108,17 @@
   gap: 8px;
   align-items: flex-start;
   width: 300px;
+  flex-shrink: 0;
 }
 
 .fg-card__title {
+  flex-shrink: 0;
   color: #000000;
   font-family: "Inter", system-ui, sans-serif;
   font-weight: 400;
   font-size: 14px;
   line-height: 20px;
+  white-space: nowrap;
 }
 
 .fg-card__body {
@@ -108,6 +126,7 @@
   flex-direction: column;
   gap: 12px;
   align-items: flex-start;
+  flex-shrink: 0;
   align-self: stretch;
   padding: 16px;
 }
@@ -116,14 +135,17 @@
   display: flex;
   flex-direction: row;
   align-items: flex-start;
+  flex-shrink: 0;
 }
 
 .fg-card__label {
+  flex-shrink: 0;
   color: #000000;
   font-family: "Inter", system-ui, sans-serif;
   font-weight: 400;
   font-size: 14px;
   line-height: 20px;
+  white-space: nowrap;
 }
 
 .fg-home {
@@ -135,34 +157,41 @@
 }
 
 .fg-home__a {
+  flex-shrink: 0;
   color: #000000;
   font-family: "Inter", system-ui, sans-serif;
   font-weight: 400;
   font-size: 14px;
   line-height: 20px;
+  white-space: nowrap;
 }
 
 .fg-home__email {
+  flex-shrink: 0;
   color: #000000;
   font-family: "Inter", system-ui, sans-serif;
   font-weight: 400;
   font-size: 14px;
   line-height: 20px;
+  white-space: nowrap;
 }
 
 .fg-home__details {
   display: flex;
   flex-direction: row;
   align-items: flex-start;
+  flex-shrink: 0;
   align-self: stretch;
 }
 
 .fg-home__body {
+  flex-shrink: 0;
   color: #000000;
   font-family: "Inter", system-ui, sans-serif;
   font-weight: 400;
   font-size: 14px;
   line-height: 20px;
+  white-space: nowrap;
 }
 
 .fg-home__wide-card.fg-home__wide-card {
@@ -171,11 +200,13 @@
 }
 
 .fg-home__line {
+  flex-shrink: 0;
   color: #000000;
   font-family: "Inter", system-ui, sans-serif;
   font-weight: 400;
   font-size: 14px;
   line-height: 20px;
+  white-space: nowrap;
 }
 
 .fg-overlay {
@@ -197,6 +228,7 @@
   position: relative;
   width: 100px;
   height: 40px;
+  flex-shrink: 0;
 }
 
 .fg-in-group__t {
@@ -210,6 +242,7 @@
   font-weight: 400;
   font-size: 14px;
   line-height: 20px;
+  white-space: nowrap;
 }
 
 .fg-fmt {
