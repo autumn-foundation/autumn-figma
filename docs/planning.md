@@ -1,4 +1,4 @@
-# Planning — autumn-plugin-figma
+# Planning — autumn-figma
 
 ## Goal
 

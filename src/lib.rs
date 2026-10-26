@@ -1,4 +1,4 @@
-//! `autumn-plugin-figma`: turn a Figma design into Maud components for
+//! `autumn-figma`: turn a Figma design into Maud components for
 //! Autumn apps.
 //!
 //! The crate ships the `autumn-figma` CLI and this library. The CLI has two
@@ -17,12 +17,12 @@
 //! The generated code depends on `maud` only.
 //!
 //! ```no_run
-//! use autumn_plugin_figma::{config::Config, generate};
+//! use autumn_figma::{config::Config, generate};
 //!
 //! let config = Config::load("figma.toml".as_ref())?;
 //! let output = generate::generate(&config)?;
 //! output.write()?;
-//! # Ok::<(), autumn_plugin_figma::Error>(())
+//! # Ok::<(), autumn_figma::Error>(())
 //! ```
 //!
 //! ## Modules

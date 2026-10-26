@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Changed
+
+- The crate and the repository are now `autumn-figma`. The library is
+  `autumn_figma`. Install from
+  `https://github.com/autumn-foundation/autumn-figma`.
+
 ### Added
 
 - `autumn-figma` CLI: `init`, `pull`, `generate`, `generate --check`, `sync`.

@@ -1,11 +1,11 @@
-//! The `autumn-figma` binary. See [`autumn_plugin_figma::cli`].
+//! The `autumn-figma` binary. See [`autumn_figma::cli`].
 
 use std::process::ExitCode;
 
 fn main() -> ExitCode {
     let cwd = std::env::current_dir().unwrap_or_default();
     let env = |key: &str| std::env::var(key).ok();
-    let code = autumn_plugin_figma::cli::run(
+    let code = autumn_figma::cli::run(
         std::env::args_os(),
         &env,
         &cwd,

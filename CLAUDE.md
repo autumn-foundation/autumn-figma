@@ -1,4 +1,4 @@
-# CLAUDE.md — autumn-plugin-figma
+# CLAUDE.md — autumn-figma
 
 ## Commands
 

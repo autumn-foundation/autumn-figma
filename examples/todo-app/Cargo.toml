@@ -9,5 +9,5 @@ autumn-web = { version = "0.8", default-features = false, features = ["maud", "h
 maud = { version = "0.27", features = ["axum"] }
 serde = { version = "1", features = ["derive"] }
 
-# Not part of the plugin crate: build it on its own.
+# Not part of the autumn-figma crate: build it on its own.
 [workspace]

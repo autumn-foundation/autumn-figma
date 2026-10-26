@@ -1,11 +1,11 @@
 [package]
-name = "autumn-plugin-figma"
+name = "autumn-figma"
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.88"
-description = "Autumn plugin: a CLI that turns Figma designs into Maud components, CSS design tokens, and htmx-ready fragments."
+description = "A CLI that turns Figma designs into Maud components, CSS design tokens, and htmx-ready fragments for Autumn apps."
 license = "Apache-2.0"
-repository = "https://github.com/autumn-foundation/autumn-plugin-figma"
+repository = "https://github.com/autumn-foundation/autumn-figma"
 readme = "README.md"
 keywords = ["autumn", "figma", "maud", "htmx", "codegen"]
 categories = ["web-programming", "command-line-utilities", "development-tools"]
@@ -14,6 +14,7 @@ exclude = [".github/", "docs/", "examples/", "tests/golden/", "tests/fixtures/",
 [[bin]]
 name = "autumn-figma"
 path = "src/main.rs"
+doc = false
 
 [dependencies]
 clap = { version = "4", features = ["derive"] }
