@@ -147,7 +147,7 @@ fn icon_component_is_an_image() {
             .contains(&("src".into(), "/static/figma/icon-check-1-30.svg".into()))
     );
     assert!(img.attrs.contains(&("alt".into(), String::new())));
-    assert!(img.children.is_empty());
+    assert_eq!(img.children, []);
 }
 
 #[test]
@@ -210,7 +210,7 @@ fn screen_applies_bindings() {
     );
     let input = child_el(form, 0);
     assert_eq!(input.tag, "input", "tag from the layer name");
-    assert!(input.children.is_empty());
+    assert_eq!(input.children, []);
     assert_eq!(
         input.attrs,
         [
@@ -546,7 +546,7 @@ fn hidden_layers_and_name_tags() {
     assert_eq!(child_el(button, 0).tag, "h2");
     let textarea = child_el(screen, 1);
     assert_eq!(textarea.tag, "textarea");
-    assert!(textarea.children.is_empty());
+    assert_eq!(textarea.children, []);
     assert_eq!(textarea.attrs, [("placeholder".into(), "Say hi".into())]);
 }
 

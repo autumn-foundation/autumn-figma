@@ -43,7 +43,7 @@ fn files_and_paths() {
         ]
     );
     assert!(out.files.iter().all(|(_, text)| text.contains(HEADER_MARK)));
-    assert!(out.stale.is_empty());
+    assert_eq!(out.stale, Vec::<PathBuf>::new());
     assert_eq!(out.assets.len(), 2);
 }
 
@@ -81,12 +81,12 @@ fn write_then_check_is_clean_and_idempotent() {
 
     let report = out.write().unwrap();
     assert_eq!(report.written.len(), 4);
-    assert!(out.drift().unwrap().is_empty());
+    assert_eq!(out.drift().unwrap(), []);
 
     let again = generate(&config).unwrap();
     assert_eq!(again.files, out.files, "byte-identical");
     let report = again.write().unwrap();
-    assert!(report.written.is_empty());
+    assert_eq!(report.written, Vec::<PathBuf>::new());
     assert_eq!(report.unchanged.len(), 4);
     assert_eq!(
         rel(dir.path(), &report.unchanged)[0],

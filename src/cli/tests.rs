@@ -143,7 +143,7 @@ fn config_flag_and_errors() {
 
     let bad = cli(dir.path(), &["frobnicate"], &no_env());
     assert_eq!(bad.code, EXIT_ERROR);
-    assert!(!bad.err.is_empty());
+    assert_ne!(bad.err, "");
     let help = cli(dir.path(), &["--help"], &no_env());
     assert_eq!(help.code, EXIT_OK);
     assert!(help.out.contains("generate"), "{}", help.out);
