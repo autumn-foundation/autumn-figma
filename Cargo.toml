@@ -1,0 +1,47 @@
+[package]
+name = "autumn-plugin-figma"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.88"
+description = "Autumn plugin: a CLI that turns Figma designs into Maud components, CSS design tokens, and htmx-ready fragments."
+license = "Apache-2.0"
+repository = "https://github.com/autumn-foundation/autumn-plugin-figma"
+readme = "README.md"
+keywords = ["autumn", "figma", "maud", "htmx", "codegen"]
+categories = ["web-programming", "command-line-utilities", "development-tools"]
+exclude = [".github/", "docs/", "CLAUDE.md", "clippy.toml", "proptest-regressions/"]
+
+[[bin]]
+name = "autumn-figma"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls-webpki-roots"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+tokio = { version = "1", default-features = false, features = ["rt", "macros", "time"] }
+toml = { version = "1", default-features = false, features = ["parse", "serde"] }
+
+[dev-dependencies]
+axum = { version = "0.8", default-features = false, features = ["http1", "json", "tokio", "query"] }
+maud = "0.27"
+proptest = "1"
+tempfile = "3"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "net"] }
+
+[lints.rust]
+unsafe_code = "forbid"
+missing_docs = "warn"
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+nursery = { level = "warn", priority = -1 }
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+todo = "deny"
+unimplemented = "deny"
+module_name_repetitions = "allow"
+redundant_pub_crate = "allow"
