@@ -11,9 +11,10 @@ fn display_has_kind_and_message() {
 
 #[test]
 fn rate_limited_keeps_the_hint() {
-    let err = Error::rate_limited(Some(30));
+    let err = Error::rate_limited(Some(30), " Limit type: low.");
     assert_eq!(err.kind(), ErrorKind::RateLimited);
     assert_eq!(err.retry_after(), Some(30));
     assert!(err.message().contains("30s"));
-    assert!(!Error::rate_limited(None).message().contains("Retry"));
+    assert!(err.message().contains("Limit type: low."));
+    assert!(!Error::rate_limited(None, "").message().contains("Retry"));
 }

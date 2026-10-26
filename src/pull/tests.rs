@@ -105,7 +105,7 @@ async fn assets_are_downloaded_in_batches_without_the_token() {
     let report = pull(&config, &client(&stub)).await.unwrap();
     assert_eq!(
         report.assets,
-        [dir.path().join("static/figma/icon-check-1-30.svg")]
+        [dir.path().join("static/figma/icon-check--1-30.svg")]
     );
     assert!(
         report.notices.iter().any(|n| n.contains("2:11")),

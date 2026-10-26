@@ -189,6 +189,9 @@ fn token_comes_from_the_lookup_and_is_redacted() {
     assert!(missing.message().contains(TOKEN_ENV));
     let blank = token_from(&|_| Some("  ".to_owned())).unwrap_err();
     assert_eq!(blank.kind(), ErrorKind::Auth);
+    let oauth = token_from(&|k| (k == OAUTH_TOKEN_ENV).then(|| "o".to_owned())).unwrap();
+    assert!(oauth.is_oauth());
+    assert!(!token.is_oauth());
 }
 
 #[test]
@@ -199,6 +202,10 @@ fn api_base() {
         "http://127.0.0.1:9"
     );
     assert!(api_base_from(&|_| Some("ftp://x".to_owned())).is_err());
+    assert!(
+        api_base_from(&|_| Some("http://figma.example".to_owned())).is_err(),
+        "plain http only for loopback"
+    );
 }
 
 #[test]

@@ -9,7 +9,7 @@ use crate::ir::{
     Arg, Body, Call, CssRule, Element, EnumDef, Function, Item, Module, ParamType, ROOT_ATTRS,
     VOID_TAGS,
 };
-use crate::names::rust_str;
+use crate::names::{comment_text, rust_str};
 use crate::tokens::TokenSet;
 
 /// Lints that generated code allows. Generated code has unused parts and
@@ -18,9 +18,12 @@ const ALLOWS: &[&str] = &[
     "dead_code",
     "unused_variables",
     "clippy::doc_markdown",
+    "clippy::enum_variant_names",
     "clippy::match_same_arms",
+    "clippy::match_wildcard_for_single_variants",
     "clippy::module_name_repetitions",
     "clippy::needless_pass_by_value",
+    "clippy::single_match_else",
     "clippy::too_many_arguments",
     "clippy::too_many_lines",
 ];
@@ -89,9 +92,9 @@ pub fn module(module: &Module, header: &Header) -> String {
     out
 }
 
-/// Text on one line, for comments.
+/// Text for a comment: one line, safe for rustc and rustdoc.
 fn one_line(text: &str) -> String {
-    text.replace(['\n', '\r'], " ")
+    comment_text(text)
 }
 
 fn indent(out: &mut String, level: usize) {

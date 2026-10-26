@@ -81,6 +81,7 @@ pub fn generate(config: &Config) -> Result<Output> {
         Err(e) => return Err(Error::io(&config.variables_snapshot, &e)),
     };
     let mut output = generate_from(config, &file, variables.as_ref())?;
+    output.check_ownership()?;
     output.stale = stale_files(&config.out_dir, &output)?;
     Ok(output)
 }
@@ -163,13 +164,46 @@ pub fn generate_from(
 }
 
 impl Output {
-    /// Write changed and missing files. Delete stale generated files.
+    /// Fail when an output path holds a file that the generator did not
+    /// write (no [`HEADER_MARK`] on its first line). The generator never
+    /// overwrites such a file.
     ///
     /// # Errors
     ///
-    /// [`ErrorKind::Io`] when a write or delete fails.
+    /// [`ErrorKind::Io`] that names each such file.
+    pub fn check_ownership(&self) -> Result<()> {
+        let foreign: Vec<String> = self
+            .files
+            .iter()
+            .filter(|(path, _)| path.exists() && !is_generated(path))
+            .map(|(path, _)| path.display().to_string())
+            .collect();
+        if foreign.is_empty() {
+            Ok(())
+        } else {
+            Err(Error::new(
+                ErrorKind::Io,
+                format!(
+                    "these files have no generated header, so the generator does not overwrite them: {}. Move them, or change out_dir or css_path.",
+                    foreign.join(", ")
+                ),
+            ))
+        }
+    }
+
+    /// Write changed and missing files. Delete stale generated files.
+    ///
+    /// The run writes each file to a temporary file first. It renames the
+    /// files into place only when all writes succeed.
+    ///
+    /// # Errors
+    ///
+    /// [`ErrorKind::Io`] when a file without the generated header is in the
+    /// way, or a write, rename, or delete fails.
     pub fn write(&self) -> Result<WriteReport> {
+        self.check_ownership()?;
         let mut report = WriteReport::default();
+        let mut staged = Vec::new();
         for (path, text) in &self.files {
             if fs::read_to_string(path).is_ok_and(|old| old == *text) {
                 report.unchanged.push(path.clone());
@@ -178,8 +212,19 @@ impl Output {
             if let Some(dir) = path.parent() {
                 fs::create_dir_all(dir).map_err(|e| Error::io(dir, &e))?;
             }
-            fs::write(path, text).map_err(|e| Error::io(path, &e))?;
-            report.written.push(path.clone());
+            let temp = path.with_extension("autumn-figma-tmp");
+            if let Err(e) = fs::write(&temp, text) {
+                for (t, _) in &staged {
+                    let _ = fs::remove_file(t);
+                }
+                let _ = fs::remove_file(&temp);
+                return Err(Error::io(path, &e));
+            }
+            staged.push((temp, path.clone()));
+        }
+        for (temp, path) in staged {
+            fs::rename(&temp, &path).map_err(|e| Error::io(&path, &e))?;
+            report.written.push(path);
         }
         for path in &self.stale {
             if path.exists() {

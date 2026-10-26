@@ -44,7 +44,7 @@ fn todos_screen_renders_with_htmx_wiring() {
     assert!(page.contains("Walk &lt;the&gt; dog"), "escaped: {page}");
     assert!(page.contains("id=\"count\">2 items left</span>"), "{page}");
     assert!(
-        page.contains("src=\"/static/figma/photo-2-11.png\""),
+        page.contains("src=\"/static/figma/photo--2-11.png\""),
         "{page}"
     );
     assert!(page.contains("Ship it<br>Today"), "{page}");
@@ -82,7 +82,7 @@ fn variants_and_props() {
     let small = button(ButtonSize::Small, icon, "Go", true, &Attrs::NONE).into_string();
     assert!(small.contains("fg-button--size-small"), "{small}");
     assert!(
-        small.contains("src=\"/static/figma/icon-check-1-30.svg\""),
+        small.contains("src=\"/static/figma/icon-check--1-30.svg\""),
         "{small}"
     );
     assert_eq!(ButtonSize::default(), ButtonSize::Large);

@@ -2,6 +2,8 @@
 
 use std::fmt;
 
+use crate::names::printable;
+
 /// How much a [`Diagnostic`] matters.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Level {
@@ -50,6 +52,14 @@ impl fmt::Display for Diagnostic {
             Level::Info => "info",
             Level::Warning => "warning",
         };
-        write!(f, "{level}: {}: {}", self.path, self.message)
+        write!(
+            f,
+            "{level}: {}: {}",
+            printable(&self.path),
+            printable(&self.message)
+        )
     }
 }
+
+#[cfg(test)]
+mod tests;

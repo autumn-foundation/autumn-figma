@@ -112,6 +112,13 @@ proptest! {
     }
 
     #[test]
+    fn names_stay_short(name in "[a-z ]{0,400}") {
+        // Regression: a 300-character page name broke the file write.
+        prop_assert!(slug(&name).len() <= MAX_NAME + MAX_NAME);
+        prop_assert!(snake_ident(&name).len() <= 2 * MAX_NAME + 1);
+    }
+
+    #[test]
     fn slug_is_safe_for_css_and_paths(name in ".{0,40}") {
         let s = slug(&name);
         prop_assert!(!s.is_empty());
@@ -137,4 +144,20 @@ proptest! {
             if c == '\\' { escaped = true; }
         }
     }
+}
+
+#[test]
+fn printable_escapes_controls_and_bidi() {
+    assert_eq!(printable("ok > path"), "ok > path");
+    assert_eq!(printable("a\u{1b}b"), "a\\u{1b}b");
+    assert_eq!(printable("\u{202e}x"), "\\u{202e}x");
+    assert_eq!(printable("é ✨"), "é ✨");
+}
+
+#[test]
+fn comment_text_strips_format_chars_and_escapes_html() {
+    assert_eq!(
+        comment_text("a\nb\r<c> & \u{202e}d\u{200b}"),
+        "a b &lt;c&gt; &amp; d"
+    );
 }

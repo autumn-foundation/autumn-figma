@@ -144,7 +144,7 @@ fn icon_component_is_an_image() {
     assert!(img.root_attrs);
     assert!(
         img.attrs
-            .contains(&("src".into(), "/static/figma/icon-check-1-30.svg".into()))
+            .contains(&("src".into(), "/static/figma/icon-check--1-30.svg".into()))
     );
     assert!(img.attrs.contains(&("alt".into(), String::new())));
     assert_eq!(img.children, []);
@@ -251,7 +251,7 @@ fn screen_applies_bindings() {
     assert!(
         photo
             .attrs
-            .contains(&("src".into(), "/static/figma/photo-2-11.png".into()))
+            .contains(&("src".into(), "/static/figma/photo--2-11.png".into()))
     );
     assert_eq!(
         child_el(hero, 1).children,
@@ -276,8 +276,8 @@ fn assets_rules_tokens_and_notes() {
     assert_eq!(
         assets,
         [
-            ("1:30", "icon-check-1-30.svg", Format::Svg),
-            ("2:11", "photo-2-11.png", Format::Png),
+            ("1:30", "icon-check--1-30.svg", Format::Svg),
+            ("2:11", "photo--2-11.png", Format::Png),
         ]
     );
     let classes: Vec<_> = l.rules.iter().map(|r| r.class.as_str()).collect();
@@ -603,4 +603,60 @@ fn a_swapped_instance_deep_in_an_instance_keeps_its_full_path() {
             args: vec![Arg::Attrs(vec![("aria_label".into(), "done".into())])],
         })])
     );
+}
+
+#[test]
+fn reserved_module_names_get_a_suffix() {
+    let file = FileResponse::from_json(
+        r#"{"document":{"id":"0:0","type":"DOCUMENT","children":[
+            {"id":"1:0","name":"Rustfmt","type":"CANVAS","children":[{"id":"1:1","name":"A","type":"FRAME"}]},
+            {"id":"2:0","name":"Main","type":"CANVAS","children":[{"id":"2:1","name":"B","type":"FRAME"}]},
+            {"id":"3:0","name":"mod","type":"CANVAS","children":[{"id":"3:1","name":"C","type":"FRAME"}]},
+            {"id":"4:0","name":"CON","type":"CANVAS","children":[{"id":"4:1","name":"D","type":"FRAME"}]}]}}"#,
+    )
+    .unwrap();
+    let l = lower(&file, None, &cfg("")).unwrap();
+    let names: Vec<_> = l.modules.iter().map(|m| m.name.as_str()).collect();
+    assert_eq!(names, ["rustfmt_2", "main_2", "mod_", "con_2"]);
+}
+
+#[test]
+fn hostile_variant_sets_do_not_panic() {
+    // A variant property without options, and children without `Key=`.
+    let empty = doc(
+        r#"{"id":"1","name":"Odd","type":"COMPONENT_SET","componentPropertyDefinitions":{
+             "Size":{"type":"VARIANT","defaultValue":"x","variantOptions":[]}},
+           "children":[{"id":"2","name":"no equals sign","type":"COMPONENT"}]}"#,
+    );
+    let l = lower(&empty, None, &cfg("")).unwrap();
+    assert!(
+        l.modules[0].enums.is_empty(),
+        "an empty enum cannot derive Default"
+    );
+    assert!(
+        l.diagnostics
+            .iter()
+            .any(|d| d.message.contains("no options"))
+    );
+
+    // 20 properties x 10 options overflow a usize product of combinations.
+    let defs: Vec<String> = (0..20)
+        .map(|i| {
+            let options: Vec<String> = (0..10).map(|o| format!("\"o{o}\"")).collect();
+            format!(
+                r#""P{i}":{{"type":"VARIANT","defaultValue":"o0","variantOptions":[{}]}}"#,
+                options.join(",")
+            )
+        })
+        .collect();
+    let big = doc(&format!(
+        r#"{{"id":"1","name":"Big","type":"COMPONENT_SET","componentPropertyDefinitions":{{{}}},
+            "children":[{{"id":"2","name":"P0=o1","type":"COMPONENT"}}]}}"#,
+        defs.join(",")
+    ));
+    let l = lower(&big, None, &cfg("")).unwrap();
+    let Body::Match { fallback, .. } = &l.modules[0].functions[0].body else {
+        panic!("not a match")
+    };
+    assert!(fallback.is_some(), "most combinations have no arm");
 }

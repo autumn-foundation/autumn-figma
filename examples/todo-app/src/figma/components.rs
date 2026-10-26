@@ -48,7 +48,7 @@ pub fn icon_check(
     attrs: &super::Attrs<'_>,
 ) -> Markup {
     html! {
-        img class="fg-icon-check" "src"="/static/figma/icon-check-1-30.svg" "alt"="" "id"=[attrs.id] "name"=[attrs.name] "value"=[attrs.value] "type"=[attrs.type_] "href"=[attrs.href] "aria-label"=[attrs.aria_label] "hx-get"=[attrs.hx_get] "hx-post"=[attrs.hx_post] "hx-put"=[attrs.hx_put] "hx-patch"=[attrs.hx_patch] "hx-delete"=[attrs.hx_delete] "hx-target"=[attrs.hx_target] "hx-swap"=[attrs.hx_swap] "hx-trigger"=[attrs.hx_trigger] "hx-vals"=[attrs.hx_vals] "hx-include"=[attrs.hx_include] "hx-confirm"=[attrs.hx_confirm] "hx-push-url"=[attrs.hx_push_url] "hx-select"=[attrs.hx_select] "hx-indicator"=[attrs.hx_indicator] "hx-boost"=[attrs.hx_boost];
+        img class="fg-icon-check" "src"="/static/figma/icon-check--1-30.svg" "alt"="" "id"=[attrs.id] "name"=[attrs.name] "value"=[attrs.value] "type"=[attrs.type_] "href"=[attrs.href] "aria-label"=[attrs.aria_label] "hx-get"=[attrs.hx_get] "hx-post"=[attrs.hx_post] "hx-put"=[attrs.hx_put] "hx-patch"=[attrs.hx_patch] "hx-delete"=[attrs.hx_delete] "hx-target"=[attrs.hx_target] "hx-swap"=[attrs.hx_swap] "hx-trigger"=[attrs.hx_trigger] "hx-vals"=[attrs.hx_vals] "hx-include"=[attrs.hx_include] "hx-confirm"=[attrs.hx_confirm] "hx-push-url"=[attrs.hx_push_url] "hx-select"=[attrs.hx_select] "hx-indicator"=[attrs.hx_indicator] "hx-boost"=[attrs.hx_boost];
     }
 }
 

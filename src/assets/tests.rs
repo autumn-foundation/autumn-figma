@@ -14,7 +14,7 @@ fn vectors_are_svg() {
         asset_of(&n).unwrap(),
         Asset {
             node_id: "1:31".into(),
-            file_name: "vector-1-31.svg".into(),
+            file_name: "vector--1-31.svg".into(),
             format: Format::Svg,
         }
     );
@@ -28,7 +28,7 @@ fn icon_like_containers_are_svg() {
             {"id":"d","type":"BOOLEAN_OPERATION"}]}"#,
     );
     assert_eq!(format_of(&icon), Some(Format::Svg));
-    assert_eq!(asset_of(&icon).unwrap().file_name, "icon-check-1-30.svg");
+    assert_eq!(asset_of(&icon).unwrap().file_name, "icon-check--1-30.svg");
 }
 
 #[test]
@@ -53,7 +53,7 @@ fn image_fills_are_png() {
         r#"{"id":"2:11","name":"Photo","type":"RECTANGLE","fills":[{"type":"IMAGE","imageRef":"x"}]}"#,
     );
     assert_eq!(format_of(&photo), Some(Format::Png));
-    assert_eq!(asset_of(&photo).unwrap().file_name, "photo-2-11.png");
+    assert_eq!(asset_of(&photo).unwrap().file_name, "photo--2-11.png");
     let hidden =
         node(r#"{"id":"1","type":"RECTANGLE","fills":[{"type":"IMAGE","visible":false}]}"#);
     assert_eq!(format_of(&hidden), None);
@@ -76,4 +76,15 @@ fn text_is_never_an_asset() {
 fn format_strings() {
     assert_eq!(Format::Svg.as_str(), "svg");
     assert_eq!(Format::Png.as_str(), "png");
+}
+
+#[test]
+fn file_names_cannot_collide() {
+    // Regression: `check-i1-2` + `3:4` and `check` + `I1:2;3:4` gave one name.
+    let a = node(r#"{"id":"3:4","name":"check-i1-2","type":"VECTOR"}"#);
+    let b = node(r#"{"id":"I1:2;3:4","name":"check","type":"VECTOR"}"#);
+    assert_ne!(
+        asset_of(&a).unwrap().file_name,
+        asset_of(&b).unwrap().file_name
+    );
 }

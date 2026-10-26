@@ -377,3 +377,36 @@ fn css_text() {
 "#;
     assert_eq!(out, expected);
 }
+
+#[test]
+fn comment_text_is_safe_for_rustc_and_rustdoc() {
+    // Regression: U+202E in a comment fails rustc's
+    // text_direction_codepoint_in_comment lint; raw HTML reaches rustdoc.
+    let m = Module {
+        name: "p".into(),
+        page: "Page \u{202e}<script>alert(1)</script> & co".into(),
+        enums: vec![],
+        functions: vec![],
+    };
+    let h = Header {
+        version: Some("1\u{2066}2".into()),
+        ..header()
+    };
+    let out = module(&m, &h);
+    assert!(
+        !out.contains('\u{202e}') && !out.contains('\u{2066}'),
+        "{out:?}"
+    );
+    assert!(
+        out.contains("&lt;script&gt;alert(1)&lt;/script&gt; &amp; co"),
+        "{out}"
+    );
+    let rs = mod_rs(
+        &[],
+        &Header {
+            file_name: "<b>\u{200f}".into(),
+            ..header()
+        },
+    );
+    assert!(rs.contains("&lt;b&gt;") && !rs.contains('\u{200f}'), "{rs}");
+}

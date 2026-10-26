@@ -27,7 +27,7 @@ pub fn todos(
             ul class="fg-todos__list" id="todo-list" { (items) }
             span class="fg-todos__count" id="count" { (remaining) }
             div class="fg-todos__hero-art" {
-                img class="fg-todos__photo" "src"="/static/figma/photo-2-11.png" "alt"="";
+                img class="fg-todos__photo" "src"="/static/figma/photo--2-11.png" "alt"="";
                 span class="fg-todos__caption" {
                     "Ship it"
                     br;

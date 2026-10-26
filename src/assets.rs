@@ -89,8 +89,9 @@ pub fn asset_of(node: &Node) -> Option<Asset> {
     let format = format_of(node)?;
     Some(Asset {
         node_id: node.id.clone(),
+        // A slug never holds `--`, so the separator keeps two names apart.
         file_name: format!(
-            "{}-{}.{}",
+            "{}--{}.{}",
             slug(&node.name),
             slug(&node.id),
             format.as_str()

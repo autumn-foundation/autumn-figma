@@ -112,7 +112,9 @@ fn generate_then_check() {
     assert_eq!(clean.code, EXIT_OK, "{}", clean.err);
     assert!(clean.out.contains("in sync"), "{}", clean.out);
 
-    fs::write(dir.path().join("src/figma/screens.rs"), "// hand edit\n").unwrap();
+    let screens = dir.path().join("src/figma/screens.rs");
+    let edited = fs::read_to_string(&screens).unwrap() + "// hand edit\n";
+    fs::write(&screens, edited).unwrap();
     let changed = cli(dir.path(), &["generate", "--check"], &no_env());
     assert_eq!(changed.code, EXIT_DRIFT);
     assert!(
@@ -184,7 +186,7 @@ fn sync_pulls_and_generates_against_the_stub() {
     let r = cli(dir.path(), &["sync"], &env);
     assert_eq!(r.code, EXIT_OK, "{}", r.err);
     assert!(dir.path().join("figma/snapshot.json").exists());
-    assert!(dir.path().join("static/figma/photo-2-11.png").exists());
+    assert!(dir.path().join("static/figma/photo--2-11.png").exists());
     assert!(dir.path().join("src/figma/screens.rs").exists());
     assert!(r.err.contains("Enterprise"), "variables notice: {}", r.err);
     assert!(!r.err.contains("missing asset"), "{}", r.err);

@@ -8,9 +8,12 @@
     dead_code,
     unused_variables,
     clippy::doc_markdown,
+    clippy::enum_variant_names,
     clippy::match_same_arms,
+    clippy::match_wildcard_for_single_variants,
     clippy::module_name_repetitions,
     clippy::needless_pass_by_value,
+    clippy::single_match_else,
     clippy::too_many_arguments,
     clippy::too_many_lines
 )]

@@ -3,6 +3,7 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 use std::collections::BTreeMap;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
 use axum::Router;
@@ -17,6 +18,7 @@ pub struct Seen {
     pub path: String,
     pub query: BTreeMap<String, String>,
     pub token: Option<String>,
+    pub auth: Option<String>,
 }
 
 /// What the stub answers.
@@ -30,6 +32,8 @@ pub struct Script {
     pub file_status: Option<u16>,
     /// `Retry-After` on a 429.
     pub retry_after: Option<&'static str>,
+    /// Answer this many file requests with 429 (`Retry-After: 0`) first.
+    pub rate_limit_first: usize,
     /// Variables body, or `None` for a 403.
     pub variables: Option<String>,
     /// Image URL by node id. `None` means Figma cannot render it.
@@ -42,6 +46,7 @@ struct Shared {
     script: Arc<Script>,
     seen: Arc<Mutex<Vec<Seen>>>,
     base: String,
+    limited: Arc<AtomicUsize>,
 }
 
 pub struct Stub {
@@ -56,14 +61,13 @@ impl Stub {
 }
 
 fn record(shared: &Shared, path: String, query: BTreeMap<String, String>, headers: &HeaderMap) {
-    let token = headers
-        .get("x-figma-token")
-        .map(|v| v.to_str().unwrap().to_owned());
-    shared
-        .seen
-        .lock()
-        .unwrap()
-        .push(Seen { path, query, token });
+    let header = |name: &str| headers.get(name).map(|v| v.to_str().unwrap().to_owned());
+    shared.seen.lock().unwrap().push(Seen {
+        path,
+        query,
+        token: header("x-figma-token"),
+        auth: header("authorization"),
+    });
 }
 
 async fn file(
@@ -73,6 +77,20 @@ async fn file(
     headers: HeaderMap,
 ) -> Response {
     record(&s, format!("/v1/files/{key}"), q.clone(), &headers);
+    if key == "REDIRECT" {
+        let mut res = StatusCode::FOUND.into_response();
+        let to = format!("{}/cdn/steal", s.base);
+        res.headers_mut().insert("location", to.parse().unwrap());
+        return res;
+    }
+    if s.limited.fetch_add(1, Ordering::SeqCst) < s.script.rate_limit_first {
+        let mut res = (StatusCode::TOO_MANY_REQUESTS, "{}").into_response();
+        res.headers_mut()
+            .insert("retry-after", "0".parse().unwrap());
+        res.headers_mut()
+            .insert("x-figma-rate-limit-type", "low".parse().unwrap());
+        return res;
+    }
     if let Some(code) = s.script.file_status {
         let mut res = (
             StatusCode::from_u16(code).unwrap(),
@@ -152,6 +170,7 @@ pub async fn start(script: Script) -> Stub {
         script: Arc::new(script),
         seen: Arc::clone(&seen),
         base: base.clone(),
+        limited: Arc::new(AtomicUsize::new(0)),
     };
     let app = Router::new()
         .route("/v1/files/{key}", get(file))

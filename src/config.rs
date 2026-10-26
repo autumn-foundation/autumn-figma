@@ -28,6 +28,10 @@ use crate::names::is_keyword;
 /// The environment variable that holds the Figma personal access token.
 pub const TOKEN_ENV: &str = "FIGMA_TOKEN";
 
+/// The environment variable that holds a Figma OAuth access token. The
+/// client reads it when `FIGMA_TOKEN` is not set.
+pub const OAUTH_TOKEN_ENV: &str = "FIGMA_OAUTH_TOKEN";
+
 /// The environment variable that overrides the API base URL (for tests and
 /// proxies).
 pub const API_BASE_ENV: &str = "FIGMA_API_BASE";
@@ -488,19 +492,40 @@ fn is_file_kind(segment: &str) -> bool {
 
 /// A Figma access token. `Debug` does not show it.
 #[derive(Clone, PartialEq, Eq)]
-pub struct Token(String);
+pub struct Token {
+    text: String,
+    oauth: bool,
+}
 
 impl Token {
-    /// Wrap a token.
+    /// Wrap a personal access token. It goes in `X-Figma-Token`.
     #[must_use]
     pub const fn new(token: String) -> Self {
-        Self(token)
+        Self {
+            text: token,
+            oauth: false,
+        }
+    }
+
+    /// Wrap an OAuth access token. It goes in `Authorization: Bearer`.
+    #[must_use]
+    pub const fn oauth(token: String) -> Self {
+        Self {
+            text: token,
+            oauth: true,
+        }
+    }
+
+    /// True for an OAuth token.
+    #[must_use]
+    pub const fn is_oauth(&self) -> bool {
+        self.oauth
     }
 
     /// The token text. Send it only to the Figma API.
     #[must_use]
     pub fn expose(&self) -> &str {
-        &self.0
+        &self.text
     }
 }
 
@@ -514,35 +539,82 @@ impl fmt::Debug for Token {
 ///
 /// # Errors
 ///
-/// [`ErrorKind::Auth`] when `FIGMA_TOKEN` is not set or is blank.
+/// `FIGMA_TOKEN` (a personal access token) wins over `FIGMA_OAUTH_TOKEN`.
+///
+/// # Errors
+///
+/// [`ErrorKind::Auth`] when neither variable has a token.
 pub fn token_from(lookup: &dyn Fn(&str) -> Option<String>) -> Result<Token> {
-    match lookup(TOKEN_ENV) {
-        Some(token) if !token.trim().is_empty() => Ok(Token::new(token.trim().to_owned())),
-        _ => Err(Error::new(
-            ErrorKind::Auth,
-            format!(
-                "{TOKEN_ENV} is not set; make a personal access token in Figma (Settings > Security) with file read scopes, then export {TOKEN_ENV}"
-            ),
-        )),
+    let read = |name: &str| {
+        lookup(name)
+            .map(|t| t.trim().to_owned())
+            .filter(|t| !t.is_empty())
+    };
+    if let Some(token) = read(TOKEN_ENV) {
+        return Ok(Token::new(token));
     }
+    if let Some(token) = read(OAUTH_TOKEN_ENV) {
+        return Ok(Token::oauth(token));
+    }
+    Err(Error::new(
+        ErrorKind::Auth,
+        format!(
+            "{TOKEN_ENV} is not set. Make a personal access token in Figma (Settings > Security) with the file_content:read scope. Then export {TOKEN_ENV}."
+        ),
+    ))
 }
 
 /// Read the API base URL through `lookup`. Default [`DEFAULT_API_BASE`].
 ///
 /// # Errors
 ///
-/// [`ErrorKind::Config`] when the value is not an `http` or `https` URL.
+/// [`ErrorKind::Config`] when the value is not a URL that
+/// [`check_base_url`] accepts.
 pub fn api_base_from(lookup: &dyn Fn(&str) -> Option<String>) -> Result<String> {
     let base = lookup(API_BASE_ENV).unwrap_or_else(|| DEFAULT_API_BASE.to_owned());
-    let base = base.trim().trim_end_matches('/');
-    if base.starts_with("https://") || base.starts_with("http://") {
-        Ok(base.to_owned())
+    check_base_url(&base).map_err(|e| {
+        Error::new(
+            ErrorKind::Config,
+            format!("{API_BASE_ENV}: {}", e.message()),
+        )
+    })
+}
+
+/// Check a URL that receives the token. It must be `https`, or `http` to a
+/// loopback host (for tests and local proxies). Returns it without a final
+/// `/`.
+///
+/// # Errors
+///
+/// [`ErrorKind::Config`] for any other URL.
+pub fn check_base_url(url: &str) -> Result<String> {
+    let url = url.trim().trim_end_matches('/');
+    if url.starts_with("https://") || is_loopback_http(url) {
+        Ok(url.to_owned())
     } else {
         Err(Error::new(
             ErrorKind::Config,
-            format!("{API_BASE_ENV} {base:?} must be an http or https URL"),
+            format!("{url:?} must be an https URL (plain http only for localhost)"),
         ))
     }
+}
+
+/// True for `http://localhost`, `http://127.0.0.1`, or `http://[::1]`,
+/// with an optional port and path.
+#[must_use]
+pub fn is_loopback_http(url: &str) -> bool {
+    let Some(rest) = url.strip_prefix("http://") else {
+        return false;
+    };
+    let authority = rest.split(['/', '?', '#']).next().unwrap_or_default();
+    if authority.contains('@') {
+        return false;
+    }
+    let host = authority.strip_prefix('[').map_or_else(
+        || authority.split(':').next().unwrap_or_default().to_owned(),
+        |v6| format!("[{}]", v6.split(']').next().unwrap_or_default()),
+    );
+    matches!(host.as_str(), "localhost" | "127.0.0.1" | "[::1]")
 }
 
 /// A starter `figma.toml` for `file_key`.

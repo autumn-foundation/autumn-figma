@@ -245,6 +245,9 @@ impl<'a> Plan<'a> {
             by_component: BTreeMap::new(),
         };
         let mut module_names = Allocator::new("_");
+        for reserved in RESERVED_MODULES {
+            module_names.reserve(reserved);
+        }
         let mut found: Vec<(String, String, Vec<Found<'a>>)> = Vec::new();
         for page in pages {
             let mut defs = Vec::new();
@@ -284,7 +287,15 @@ impl<'a> Plan<'a> {
             for (node, kind, path) in defs {
                 let name = fn_names.claim(&snake_ident(&node.name));
                 let found = (node, kind, path);
-                let sig = signature(&found, &module, name, config, &locals, &mut enum_names);
+                let sig = signature(
+                    &found,
+                    &module,
+                    name,
+                    config,
+                    &locals,
+                    &mut enum_names,
+                    diagnostics,
+                );
                 let (node, kind, path) = found;
                 let index = plan.sigs.len();
                 match kind {
@@ -319,6 +330,13 @@ impl<'a> Plan<'a> {
 /// A function found on a page: its node, kind, and layer path.
 type Found<'a> = (&'a Node, DefKind, Vec<String>);
 
+/// Module names that clash with Rust, Cargo, rustfmt, or Windows file names.
+const RESERVED_MODULES: &[&str] = &[
+    "main", "lib", "mod", "build", "rustfmt", "clippy", "con", "prn", "aux", "nul", "com1", "com2",
+    "com3", "com4", "com5", "com6", "com7", "com8", "com9", "lpt1", "lpt2", "lpt3", "lpt4", "lpt5",
+    "lpt6", "lpt7", "lpt8", "lpt9",
+];
+
 /// Collect the functions under one child of a page.
 fn top_level<'a>(
     node: &'a Node,
@@ -334,7 +352,7 @@ fn top_level<'a>(
             defs.push((node, DefKind::Screen, path.clone()));
             nested_components(node, &path, defs);
         }
-        NodeType::Section => {
+        NodeType::Section | NodeType::Group => {
             for child in &node.children {
                 top_level(child, &path, defs, diagnostics);
             }
@@ -366,6 +384,7 @@ fn signature(
     config: &Config,
     locals: &BTreeSet<String>,
     enum_names: &mut Allocator,
+    diagnostics: &mut Vec<Diagnostic>,
 ) -> Sig {
     let (node, kind, path) = (found.0, found.1, found.2.as_slice());
     let mut params = Vec::new();
@@ -383,37 +402,14 @@ fn signature(
                 .filter(|k| defs[*k].kind == PropertyType::Variant),
         );
         for key in variant_keys {
-            let def = &defs[key];
-            let mut options = def.variant_options.clone();
-            for child in &node.children {
-                if let Some(v) = variant_values(&child.name).get(key)
-                    && !options.contains(v)
-                {
-                    options.push(v.clone());
-                }
+            let at = path.join(" > ");
+            if let Some(e) = variant_enum(node, key, &name, &at, enum_names, diagnostics) {
+                params.push((
+                    param_names.claim(&snake_ident(key)),
+                    Source::Variant(enums.len()),
+                ));
+                enums.push(e);
             }
-            let default = def
-                .default_value
-                .as_str()
-                .and_then(|d| options.iter().position(|o| o == d))
-                .unwrap_or(0);
-            let mut idents = Allocator::new("");
-            let variants = options
-                .iter()
-                .map(|o| (idents.claim(&camel_ident(o)), o.clone()))
-                .collect();
-            let enum_name =
-                enum_names.claim(&format!("{}{}", camel_ident(&name), camel_ident(key)));
-            params.push((
-                param_names.claim(&snake_ident(key)),
-                Source::Variant(enums.len()),
-            ));
-            enums.push(EnumInfo {
-                key: key.clone(),
-                name: enum_name,
-                variants,
-                default,
-            });
         }
     }
     if kind != DefKind::Screen {
@@ -466,6 +462,50 @@ fn signature(
         enums,
         defaults,
     }
+}
+
+/// The enum for the variant property `key` of the set `node`. `None`
+/// (with a warning) when the property has no options.
+fn variant_enum(
+    node: &Node,
+    key: &str,
+    fn_name: &str,
+    at: &str,
+    enum_names: &mut Allocator,
+    diagnostics: &mut Vec<Diagnostic>,
+) -> Option<EnumInfo> {
+    let def = node.component_property_definitions.get(key)?;
+    let mut options = def.variant_options.clone();
+    for child in &node.children {
+        if let Some(v) = variant_values(&child.name).get(key)
+            && !options.contains(v)
+        {
+            options.push(v.clone());
+        }
+    }
+    if options.is_empty() {
+        diagnostics.push(Diagnostic::warning(
+            at,
+            format!("the variant property {key:?} has no options, so the generator skips it"),
+        ));
+        return None;
+    }
+    let default = def
+        .default_value
+        .as_str()
+        .and_then(|d| options.iter().position(|o| o == d))
+        .unwrap_or(0);
+    let mut idents = Allocator::new("");
+    let variants = options
+        .iter()
+        .map(|o| (idents.claim(&camel_ident(o)), o.clone()))
+        .collect();
+    Some(EnumInfo {
+        key: key.to_owned(),
+        name: enum_names.claim(&format!("{}{}", camel_ident(fn_name), camel_ident(key))),
+        variants,
+        default,
+    })
 }
 
 /// Find `slot` and `text` bindings in a definition subtree.
@@ -707,7 +747,21 @@ impl Lowerer<'_> {
             }
             arms.push(Arm { pattern, body });
         }
-        let combinations: usize = sig.enums.iter().map(|e| e.variants.len()).product();
+        if sig.enums.is_empty() || arms.is_empty() {
+            // Without variant values a match has nothing to choose from.
+            if arms.is_empty() {
+                self.diagnostics.push(Diagnostic::warning(
+                    def.path.join(" > "),
+                    "the component set has no variant to render, so the function renders nothing",
+                ));
+            }
+            let body = arms.into_iter().next().map(|a| a.body).unwrap_or_default();
+            return Ok(Body::Single(body));
+        }
+        let combinations = sig
+            .enums
+            .iter()
+            .fold(1_usize, |n, e| n.saturating_mul(e.variants.len()));
         let fallback = if arms.len() < combinations {
             arms.get(default_arm.unwrap_or(0)).map(|a| a.body.clone())
         } else {

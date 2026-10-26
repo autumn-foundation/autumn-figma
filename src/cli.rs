@@ -103,7 +103,7 @@ pub fn run(
     match result {
         Ok(code) => code,
         Err(e) => {
-            io.line_err(&format!("error: {e}"));
+            io.line_err(&format!("error: {}", crate::names::printable(e.message())));
             EXIT_ERROR
         }
     }
@@ -194,7 +194,7 @@ fn pull_step(
         io.line(&format!("pulled {}", rel(&config.root, asset)));
     }
     for notice in &report.notices {
-        io.line_err(&format!("note: {notice}"));
+        io.line_err(&format!("note: {}", crate::names::printable(notice)));
     }
     Ok(EXIT_OK)
 }

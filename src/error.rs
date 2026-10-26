@@ -62,13 +62,14 @@ impl Error {
         }
     }
 
-    /// Make a rate-limit error with the server's retry hint in seconds.
+    /// Make a rate-limit error with the server's retry hint in seconds and
+    /// extra detail (for example the limit type).
     #[must_use]
-    pub fn rate_limited(retry_after: Option<u64>) -> Self {
+    pub fn rate_limited(retry_after: Option<u64>, detail: &str) -> Self {
         let hint = retry_after.map_or_else(String::new, |s| format!(" Retry after {s}s."));
         Self {
             kind: ErrorKind::RateLimited,
-            message: format!("Figma limits the request rate.{hint}"),
+            message: format!("Figma limits the request rate.{hint}{detail}"),
             retry_after,
         }
     }

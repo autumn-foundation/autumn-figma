@@ -76,7 +76,9 @@ pub async fn pull(config: &Config, client: &FigmaClient) -> Result<PullReport> {
             .collect();
         for batch in assets.chunks(IMAGE_BATCH) {
             let ids: Vec<String> = batch.iter().map(|a| a.node_id.clone()).collect();
-            let images = client.images(key, &ids, format).await?;
+            let images = client
+                .images(key, &ids, format, file.version.as_deref())
+                .await?;
             for asset in batch {
                 let url = images.images.get(&asset.node_id).cloned().flatten();
                 let Some(url) = url else {

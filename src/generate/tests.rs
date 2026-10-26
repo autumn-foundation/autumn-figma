@@ -99,7 +99,8 @@ fn drift_finds_changed_and_stale_files() {
     let (dir, config) = app();
     generate(&config).unwrap().write().unwrap();
     let screens = dir.path().join("src/figma/screens.rs");
-    fs::write(&screens, "// edited by hand\n").unwrap();
+    let edited = fs::read_to_string(&screens).unwrap() + "// edited by hand\n";
+    fs::write(&screens, edited).unwrap();
     let stale = dir.path().join("src/figma/old_page.rs");
     fs::write(
         &stale,
@@ -135,13 +136,13 @@ fn missing_assets_are_listed() {
     assert_eq!(out.missing_assets(&config).len(), 2);
     fs::create_dir_all(dir.path().join("static/figma")).unwrap();
     fs::write(
-        dir.path().join("static/figma/icon-check-1-30.svg"),
+        dir.path().join("static/figma/icon-check--1-30.svg"),
         "<svg/>",
     )
     .unwrap();
     assert_eq!(
         rel(dir.path(), &out.missing_assets(&config)),
-        ["static/figma/photo-2-11.png"]
+        ["static/figma/photo--2-11.png"]
     );
 }
 
@@ -153,4 +154,24 @@ fn generate_from_matches_generate() {
     let a = generate_from(&config, &file, Some(&vars)).unwrap();
     let b = generate(&config).unwrap();
     assert_eq!(a.files, b.files);
+}
+
+#[test]
+fn never_overwrites_a_file_without_the_header() {
+    // Regression: a page named "Helpers" replaced a hand-written helpers.rs.
+    let (dir, config) = app();
+    fs::create_dir_all(dir.path().join("src/figma")).unwrap();
+    let mine = dir.path().join("src/figma/screens.rs");
+    fs::write(&mine, "// my own code\n").unwrap();
+    let err = generate(&config).unwrap_err();
+    assert_eq!(err.kind(), ErrorKind::Io);
+    assert!(err.message().contains("screens.rs"), "{err}");
+    assert!(err.message().contains("header"), "{err}");
+    assert_eq!(fs::read_to_string(&mine).unwrap(), "// my own code\n");
+
+    fs::remove_file(&mine).unwrap();
+    fs::create_dir_all(dir.path().join("static/css")).unwrap();
+    fs::write(dir.path().join("static/css/figma.css"), "body {}\n").unwrap();
+    let err = generate(&config).unwrap_err();
+    assert!(err.message().contains("figma.css"), "{err}");
 }

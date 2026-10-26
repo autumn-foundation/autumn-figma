@@ -17,11 +17,71 @@ pub fn slug(name: &str) -> String {
     words.join("-").to_ascii_lowercase()
 }
 
-/// Runs of ASCII letters and digits.
+/// The longest name part that the generator makes. A longer name gets cut,
+/// so file names stay inside file-system limits.
+pub const MAX_NAME: usize = 48;
+
+/// Runs of ASCII letters and digits, cut at [`MAX_NAME`] characters in all.
 fn words(name: &str) -> Vec<&str> {
+    let mut total = 0;
     name.split(|c: char| !c.is_ascii_alphanumeric())
         .filter(|w| !w.is_empty())
+        .map_while(|w| {
+            if total >= MAX_NAME {
+                return None;
+            }
+            let room = MAX_NAME - total;
+            total += w.len().min(room) + 1;
+            Some(&w[..w.len().min(room)])
+        })
         .collect()
+}
+
+/// `text` for a terminal: control and direction characters become
+/// `\u{..}` escapes, so a layer name cannot move the cursor or hide text.
+#[must_use]
+pub fn printable(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    for c in text.chars() {
+        if c.is_control() || is_format_char(c) {
+            out.push_str(&c.escape_unicode().to_string());
+        } else {
+            out.push(c);
+        }
+    }
+    out
+}
+
+/// `text` for a Rust comment and its rustdoc page: one line, no control or
+/// direction characters, and HTML-escaped.
+#[must_use]
+pub fn comment_text(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    for c in text.chars() {
+        match c {
+            '\n' | '\r' | '\t' => out.push(' '),
+            '<' => out.push_str("&lt;"),
+            '>' => out.push_str("&gt;"),
+            '&' => out.push_str("&amp;"),
+            c if c.is_control() || is_format_char(c) => {}
+            c => out.push(c),
+        }
+    }
+    out
+}
+
+/// True for invisible format characters: direction marks and overrides,
+/// zero-width characters, and the byte-order mark.
+const fn is_format_char(c: char) -> bool {
+    matches!(
+        c,
+        '\u{00ad}'
+            | '\u{061c}'
+            | '\u{200b}'..='\u{200f}'
+            | '\u{2028}'..='\u{202e}'
+            | '\u{2060}'..='\u{2069}'
+            | '\u{feff}'
+    )
 }
 
 /// A `snake_case` Rust identifier. Keywords get a `_` suffix.
