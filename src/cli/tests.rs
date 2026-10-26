@@ -197,3 +197,34 @@ fn sync_pulls_and_generates_against_the_stub() {
             .all(|s| s.path.starts_with("/cdn") || s.token.is_some())
     );
 }
+
+#[test]
+fn quiet_hides_info_notes() {
+    let dir = fixture_app();
+    let loud = cli(dir.path(), &["generate"], &no_env());
+    assert!(loud.err.contains("info:"), "{}", loud.err);
+    let quiet = cli(dir.path(), &["--quiet", "generate"], &no_env());
+    assert_eq!(quiet.code, EXIT_OK, "{}", quiet.err);
+    assert!(!quiet.err.contains("info:"), "{}", quiet.err);
+    assert!(
+        quiet.err.contains("warning:"),
+        "warnings stay: {}",
+        quiet.err
+    );
+}
+
+#[test]
+fn help_names_exit_codes_and_env() {
+    let dir = tempfile::tempdir().unwrap();
+    let help = cli(dir.path(), &["--help"], &no_env());
+    for text in ["FIGMA_TOKEN", "Exit codes", "2  `generate --check`", "Maud"] {
+        assert!(help.out.contains(text), "{text}: {}", help.out);
+    }
+}
+
+#[test]
+fn init_prints_a_relative_path() {
+    let dir = tempfile::tempdir().unwrap();
+    let r = cli(dir.path(), &["init", "--file-key", "AbC123"], &no_env());
+    assert!(r.out.starts_with("wrote figma.toml\n"), "{}", r.out);
+}

@@ -17,6 +17,7 @@ use clap::{Parser, Subcommand};
 
 use crate::client::FigmaClient;
 use crate::config::{self, Config};
+use crate::diagnostics::Level;
 use crate::error::{Error, ErrorKind, Result};
 use crate::generate::{self, Drift};
 use crate::pull::{self, PullReport};
@@ -31,15 +32,31 @@ pub const EXIT_DRIFT: i32 = 2;
 /// Turn a Figma design into Maud components, CSS tokens, and htmx-ready
 /// fragments.
 #[derive(Debug, Parser)]
-#[command(name = "autumn-figma", version, about)]
+#[command(name = "autumn-figma", version, after_help = AFTER_HELP)]
 pub struct Cli {
     /// The config file.
     #[arg(long, global = true, default_value = crate::config::CONFIG_FILE)]
     pub config: PathBuf,
+    /// Show warnings and errors only.
+    #[arg(long, short, global = true)]
+    pub quiet: bool,
     /// The command.
     #[command(subcommand)]
     pub command: Command,
 }
+
+const AFTER_HELP: &str = "\
+Paths in figma.toml are relative to the file.
+
+Environment:
+  FIGMA_TOKEN        Personal access token (scope file_content:read). Only `pull` needs it.
+  FIGMA_OAUTH_TOKEN  OAuth token, when FIGMA_TOKEN is not set.
+  FIGMA_API_BASE     API base URL (https, or http to localhost).
+
+Exit codes:
+  0  success
+  1  error
+  2  `generate --check` found generated files that differ";
 
 /// A command.
 #[derive(Debug, Subcommand)]
@@ -88,7 +105,12 @@ pub fn run(
         }
     };
     let config_path = cwd.join(&cli.config);
-    let mut io = Io { out, err };
+    let mut io = Io {
+        out,
+        err,
+        quiet: cli.quiet,
+        cwd,
+    };
     let result = match cli.command {
         Command::Init { file_key } => init(&config_path, file_key.as_deref(), &mut io),
         Command::Pull => load(&config_path).and_then(|c| pull_step(&c, env, &mut io)),
@@ -112,6 +134,8 @@ pub fn run(
 struct Io<'a> {
     out: &'a mut dyn Write,
     err: &'a mut dyn Write,
+    quiet: bool,
+    cwd: &'a Path,
 }
 
 impl Io<'_> {
@@ -156,13 +180,14 @@ fn init(path: &Path, file_key: Option<&str>, io: &mut Io<'_>) -> Result<i32> {
     }
     let key = match file_key {
         Some(k) => config::parse_file_key(k)?,
-        None => "PASTE_FILE_KEY_OR_URL".to_owned(),
+        None => config::KEY_PLACEHOLDER.to_owned(),
     };
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir).map_err(|e| Error::io(dir, &e))?;
     }
     std::fs::write(path, config::starter_toml(&key)).map_err(|e| Error::io(path, &e))?;
-    io.line(&format!("wrote {}", path.display()));
+    let shown = rel(io.cwd, path);
+    io.line(&format!("wrote {shown}"));
     if file_key.is_none() {
         io.line("next: set file_key to the key or URL of your Figma file");
     }
@@ -202,7 +227,9 @@ fn pull_step(
 fn generate_step(config: &Config, check: bool, io: &mut Io<'_>) -> Result<i32> {
     let output = generate::generate(config)?;
     for d in &output.diagnostics {
-        io.line_err(&d.to_string());
+        if !(io.quiet && d.level == Level::Info) {
+            io.line_err(&d.to_string());
+        }
     }
     for asset in output.missing_assets(config) {
         io.line_err(&format!(
@@ -224,7 +251,9 @@ fn generate_step(config: &Config, check: bool, io: &mut Io<'_>) -> Result<i32> {
             };
             io.line_err(&format!("{what}: {}", rel(&config.root, path)));
         }
-        io.line_err("the generated files differ from the snapshot; run `autumn-figma generate`");
+        io.line_err(
+            "The generated files do not match the snapshot and figma.toml. Run `autumn-figma generate`, then commit the result.",
+        );
         return Ok(EXIT_DRIFT);
     }
     let report = output.write()?;

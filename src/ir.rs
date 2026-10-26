@@ -174,6 +174,9 @@ pub const ROOT_ATTRS: &[(&str, &str)] = &[
     ("type", "type_"),
     ("href", "href"),
     ("aria-label", "aria_label"),
+    ("role", "role"),
+    ("title", "title"),
+    ("disabled", "disabled"),
     ("hx-get", "hx_get"),
     ("hx-post", "hx_post"),
     ("hx-put", "hx_put"),
@@ -189,6 +192,11 @@ pub const ROOT_ATTRS: &[(&str, &str)] = &[
     ("hx-select", "hx_select"),
     ("hx-indicator", "hx_indicator"),
     ("hx-boost", "hx_boost"),
+    ("hx-swap-oob", "hx_swap_oob"),
+    ("hx-headers", "hx_headers"),
+    ("hx-ext", "hx_ext"),
+    ("hx-sync", "hx_sync"),
+    ("hx-disabled-elt", "hx_disabled_elt"),
 ];
 
 /// The `Attrs` field for an HTML attribute name, if it has one.

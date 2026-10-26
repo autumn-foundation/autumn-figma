@@ -1,14 +1,19 @@
 //! A todo app made from a Figma design with `autumn-figma`.
 //!
-//! `src/figma/` and `static/css/figma.css` are generated. Run
-//! `autumn-figma generate` after a design change. This file holds only the
-//! behavior: the routes and the data.
+//! `autumn-figma generate` writes `src/figma/` and `static/css/figma.css`.
+//! Run it after a design change. This file holds only the behavior: the
+//! routes and the data.
+//!
+//! Autumn serves htmx and its CSRF helper. The helper reads the token from
+//! the `csrf-token` meta tag, so htmx requests also work in the prod
+//! profile, where CSRF protection is on.
 
 mod figma;
 
 use std::sync::Mutex;
 
 use autumn_web::prelude::*;
+use autumn_web::security::CsrfToken;
 use figma::Attrs;
 use figma::components::todo_row;
 use serde::Deserialize;
@@ -22,7 +27,7 @@ fn todos() -> Vec<Todo> {
     TODOS.lock().map(|t| t.clone()).unwrap_or_default()
 }
 
-fn layout(content: Markup) -> Markup {
+fn layout(csrf: Option<&CsrfToken>, content: Markup) -> Markup {
     html! {
         (maud::DOCTYPE)
         html lang="en" {
@@ -30,8 +35,12 @@ fn layout(content: Markup) -> Markup {
                 meta charset="utf-8";
                 meta name="viewport" content="width=device-width, initial-scale=1";
                 title { "Todos" }
+                @if let Some(csrf) = csrf {
+                    meta name="csrf-token" content=(csrf.token());
+                }
                 link rel="stylesheet" href="/static/css/figma.css";
-                script src="/static/js/htmx.min.js" defer {}
+                script src=(asset_url("js/htmx.min.js")) defer {}
+                script src=(asset_url("js/autumn-htmx-csrf.js")) defer {}
             }
             body { (content) }
         }
@@ -57,20 +66,32 @@ fn row(todo: &Todo) -> Markup {
 }
 
 fn remaining(todos: &[Todo]) -> String {
-    let open = todos.iter().filter(|t| !t.2).count();
-    format!("{open} items left")
+    match todos.iter().filter(|t| !t.2).count() {
+        1 => "1 item left".to_owned(),
+        open => format!("{open} items left"),
+    }
+}
+
+/// The count, swapped out of band, so it changes with each add or delete.
+fn count_oob() -> Markup {
+    html! {
+        span id="count" class="fg-todos__count" hx-swap-oob="true" { (remaining(&todos())) }
+    }
 }
 
 #[get("/")]
 #[public]
-async fn index() -> Markup {
+async fn index(csrf: Option<CsrfToken>) -> Markup {
     let todos = todos();
     let rows = html! {
         @for todo in &todos {
             (row(todo))
         }
     };
-    layout(figma::screens::todos(rows, &remaining(&todos)))
+    layout(
+        csrf.as_ref(),
+        figma::screens::todos(rows, &remaining(&todos)),
+    )
 }
 
 #[derive(Deserialize)]
@@ -91,17 +112,20 @@ async fn create(Form(form): Form<NewTodo>) -> Markup {
             todo
         },
     );
-    row(&todo)
+    html! {
+        (row(&todo))
+        (count_oob())
+    }
 }
 
-/// An empty body: htmx swaps the row out.
+/// No row: htmx swaps the row out. The count changes out of band.
 #[delete("/todos/{id}")]
 #[public]
 async fn remove(id: Path<u32>) -> Markup {
     if let Ok(mut list) = TODOS.lock() {
         list.retain(|t| t.0 != *id);
     }
-    html! {}
+    count_oob()
 }
 
 #[autumn_web::main]

@@ -141,7 +141,7 @@ fn bad_bindings_are_rejected() {
 #[test]
 fn htmx_attribute_names_are_allowed() {
     let c = parse(
-        "file_key = \"A1\"\n[[bind]]\npath = \"A\"\nattrs = { \"hx-on:click\" = \"x\", \"data-id\" = \"1\", \"@click\" = \"y\", \"aria-label\" = \"z\" }",
+        "file_key = \"A1\"\n[[bind]]\npath = \"A\"\nattrs = { \"hx-target\" = \"#x\", \"data-id\" = \"1\", \"@click\" = \"y\", \"aria-label\" = \"z\" }",
     )
     .unwrap();
     assert_eq!(c.binds[0].attrs.len(), 4);
@@ -215,4 +215,32 @@ fn starter_toml_parses() {
     assert_eq!(c.file_key, "AbC123");
     assert!(src.contains("FIGMA_TOKEN"));
     assert!(src.contains("[[bind]]"));
+}
+
+#[test]
+fn inline_event_handlers_are_rejected() {
+    // Autumn's CSP blocks inline handlers; hx-on needs unsafe-eval.
+    let base = "file_key = \"A1\"\n[[bind]]\npath = \"A\"\n";
+    for name in [
+        "onclick",
+        "onload",
+        "hx-on:click",
+        "hx-on::after-request",
+        "hx-on",
+    ] {
+        let msg = err(&format!("{base}attrs = {{ \"{name}\" = \"x()\" }}"));
+        assert!(msg.contains("inline"), "{name}: {msg}");
+    }
+}
+
+#[test]
+fn toml_errors_have_a_line_and_column() {
+    let msg = err("file_key = \"A1\"\npages = [\"x\"\n");
+    assert!(msg.contains("line 2"), "{msg}");
+}
+
+#[test]
+fn the_init_placeholder_has_a_clear_message() {
+    let msg = err("file_key = \"PASTE_FILE_KEY_OR_URL\"");
+    assert!(msg.contains("placeholder"), "{msg}");
 }

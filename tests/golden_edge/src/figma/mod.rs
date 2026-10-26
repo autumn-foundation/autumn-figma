@@ -48,6 +48,12 @@ pub struct Attrs<'a> {
     pub href: Option<&'a str>,
     /// The `aria-label` attribute.
     pub aria_label: Option<&'a str>,
+    /// The `role` attribute.
+    pub role: Option<&'a str>,
+    /// The `title` attribute.
+    pub title: Option<&'a str>,
+    /// The `disabled` attribute.
+    pub disabled: Option<&'a str>,
     /// The `hx-get` attribute.
     pub hx_get: Option<&'a str>,
     /// The `hx-post` attribute.
@@ -78,6 +84,16 @@ pub struct Attrs<'a> {
     pub hx_indicator: Option<&'a str>,
     /// The `hx-boost` attribute.
     pub hx_boost: Option<&'a str>,
+    /// The `hx-swap-oob` attribute.
+    pub hx_swap_oob: Option<&'a str>,
+    /// The `hx-headers` attribute.
+    pub hx_headers: Option<&'a str>,
+    /// The `hx-ext` attribute.
+    pub hx_ext: Option<&'a str>,
+    /// The `hx-sync` attribute.
+    pub hx_sync: Option<&'a str>,
+    /// The `hx-disabled-elt` attribute.
+    pub hx_disabled_elt: Option<&'a str>,
 }
 
 impl Attrs<'static> {
@@ -90,6 +106,9 @@ impl Attrs<'static> {
         type_: None,
         href: None,
         aria_label: None,
+        role: None,
+        title: None,
+        disabled: None,
         hx_get: None,
         hx_post: None,
         hx_put: None,
@@ -105,6 +124,11 @@ impl Attrs<'static> {
         hx_select: None,
         hx_indicator: None,
         hx_boost: None,
+        hx_swap_oob: None,
+        hx_headers: None,
+        hx_ext: None,
+        hx_sync: None,
+        hx_disabled_elt: None,
     };
 }
 

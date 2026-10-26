@@ -91,6 +91,14 @@ pub fn lower(
         });
     }
     lw.check_bindings()?;
+    for name in lw.tokens.autumn_clashes() {
+        lw.diagnostics.push(Diagnostic::warning(
+            "tokens",
+            format!(
+                "The token {name} has the name of an Autumn token. Autumn widgets take its value. To keep the Autumn value, rename the token in [tokens]."
+            ),
+        ));
+    }
     Ok(Lowered {
         modules,
         rules: lw.rules,
@@ -359,7 +367,7 @@ fn top_level<'a>(
         }
         _ => diagnostics.push(Diagnostic::info(
             path.join(" > "),
-            "a top-level layer that is not a frame, section, or component is skipped",
+            "The generator skips this top-level layer. Only frames, sections, groups, and components become functions.",
         )),
     }
 }
@@ -486,7 +494,7 @@ fn variant_enum(
     if options.is_empty() {
         diagnostics.push(Diagnostic::warning(
             at,
-            format!("the variant property {key:?} has no options, so the generator skips it"),
+            format!("The variant property {key:?} has no options. The generator skips it."),
         ));
         return None;
     }
@@ -731,7 +739,7 @@ impl Lowerer<'_> {
             if !seen.insert(pattern.clone()) {
                 self.diagnostics.push(Diagnostic::warning(
                     path.join(" > "),
-                    "a duplicate variant is skipped; the first one with these values wins",
+                    "This variant is a duplicate of an earlier variant. The generator skips it.",
                 ));
                 continue;
             }
@@ -752,7 +760,7 @@ impl Lowerer<'_> {
             if arms.is_empty() {
                 self.diagnostics.push(Diagnostic::warning(
                     def.path.join(" > "),
-                    "the component set has no variant to render, so the function renders nothing",
+                    "The component set has no variants. The function renders nothing.",
                 ));
             }
             let body = arms.into_iter().next().map(|a| a.body).unwrap_or_default();
@@ -909,7 +917,7 @@ impl Lowerer<'_> {
         ) {
             self.diagnostics.push(Diagnostic::info(
                 site.text(),
-                "this layer type is not supported; it is skipped",
+                "The generator does not support this layer type. It skips the layer.",
             ));
             return Ok(None);
         }
@@ -962,7 +970,7 @@ impl Lowerer<'_> {
             if b.tag.as_deref().is_some_and(|t| t != "img") {
                 self.diagnostics.push(Diagnostic::warning(
                     &path_text,
-                    "the layer exports as an image; the binding tag is ignored",
+                    "The layer exports as an image. The generator ignores the binding tag.",
                 ));
             }
         }
@@ -1097,14 +1105,16 @@ impl Lowerer<'_> {
                             .filter(|(p, _)| TYPE_PROPERTIES.contains(&p.as_str())),
                     );
                     if has_own {
-                        format!("the children of <{tag}> are dropped")
+                        format!(
+                            "The element <{tag}> takes no children. The generator removes them."
+                        )
                     } else {
                         format!(
-                            "the children of <{tag}> are dropped; the first text is the placeholder"
+                            "The element <{tag}> takes no children. The generator removes them. The first text becomes the placeholder."
                         )
                     }
                 }
-                _ => format!("the children of <{tag}> are dropped"),
+                _ => format!("The element <{tag}> takes no children. The generator removes them."),
             };
             self.diagnostics.push(Diagnostic::info(&path_text, message));
         }
@@ -1173,7 +1183,7 @@ impl Lowerer<'_> {
             self.diagnostics.push(Diagnostic::warning(
                 &path_text,
                 format!(
-                    "the nested instance {:?} is exposed, but the generator does not pass its overrides; add a property to the outer component, or bind the nested layer",
+                    "The nested instance {:?} is exposed. The generator does not pass its overrides. Add a property to the outer component, or bind the nested layer.",
                     exposed.name
                 ),
             ));

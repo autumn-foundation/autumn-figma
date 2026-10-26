@@ -18,6 +18,28 @@ use crate::diagnostics::Diagnostic;
 use crate::model::{Color, Variable, VariableType, VariablesResponse, alias_id};
 use crate::names::{Allocator, css_str, num, px, slug};
 
+/// The CSS custom properties of Autumn's widgets (`autumn_web::ui::tokens`).
+pub const AUTUMN_TOKENS: &[&str] = &[
+    "--bg",
+    "--surface",
+    "--text",
+    "--text-muted",
+    "--border",
+    "--primary",
+    "--primary-hover",
+    "--primary-light",
+    "--danger",
+    "--danger-hover",
+    "--danger-light",
+    "--success",
+    "--success-light",
+    "--warning",
+    "--warning-light",
+    "--radius",
+    "--shadow",
+    "--font-family",
+];
+
 /// The token set of one generation run.
 #[derive(Debug, Clone, Default)]
 pub struct TokenSet {
@@ -33,6 +55,8 @@ pub struct TokenSet {
     renames: BTreeMap<String, String>,
     /// Mode slug by collection id and mode id.
     mode_slugs: BTreeMap<(String, String), String>,
+    /// Names that the set made, not names from `[tokens]`.
+    made: std::collections::BTreeSet<String>,
     /// Slugs of default modes in collections with more than one mode.
     default_slugs: std::collections::BTreeSet<String>,
 }
@@ -90,7 +114,9 @@ impl TokenSet {
         for var in &sorted {
             let name = self.renames.get(&var.name).cloned().unwrap_or_else(|| {
                 let base = format!("--{}", slug(&var.name));
-                self.names.claim(&base)
+                let made = self.names.claim(&base);
+                self.made.insert(made.clone());
+                made
             });
             self.variables.insert(var.id.clone(), name);
         }
@@ -127,7 +153,7 @@ impl TokenSet {
                     diagnostics.push(Diagnostic::warning(
                         format!("variables > {}", var.name),
                         format!(
-                            "mode {mode_name:?} has a value that is not usable in CSS (for example an alias to {}); the declaration is skipped",
+                            "Mode {mode_name:?} has a value that CSS cannot use (for example an alias to {}). The generator skips the declaration.",
                             alias_id(raw).unwrap_or("an unknown variable")
                         ),
                     ));
@@ -204,11 +230,24 @@ impl TokenSet {
         let value = value()?;
         let name = self.renames.get(style_name).cloned().unwrap_or_else(|| {
             let base = format!("--{}", slug(style_name));
-            self.names.claim(&base)
+            let made = self.names.claim(&base);
+            self.made.insert(made.clone());
+            made
         });
         self.root.push((name.clone(), value));
         self.styles.insert(style_id.to_owned(), name.clone());
         Some(format!("var({name})"))
+    }
+
+    /// Made names that are also Autumn tokens. Such a name changes the
+    /// look of Autumn widgets.
+    #[must_use]
+    pub fn autumn_clashes(&self) -> Vec<&str> {
+        self.made
+            .iter()
+            .filter(|n| AUTUMN_TOKENS.contains(&n.as_str()))
+            .map(String::as_str)
+            .collect()
     }
 
     /// True when the set has no declarations.

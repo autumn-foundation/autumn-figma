@@ -11,7 +11,7 @@ command and review the diff.
 A CLI. The design is a build input, like a migration or a schema. It is not
 a request-time dependency. See [ADR 0001](adr/0001-cli-codegen.md).
 
-The tool is `autumn-figma`. It has three steps:
+The tool is `autumn-figma`. It has two steps and a check:
 
 1. `pull` reads the Figma REST API and writes a JSON snapshot. Only this step
    needs the network and `FIGMA_TOKEN`.
@@ -80,14 +80,17 @@ Ideas, not filtered:
 
 ## Six thinking hats
 
-- **White (facts).** Figma REST: `GET /v1/files/:key` (with `ids`),
-  `GET /v1/files/:key/variables/local` (Enterprise, scope
-  `file_variables:read`), `GET /v1/images/:key`. Nodes carry auto-layout
-  fields, `componentPropertyDefinitions`, `componentProperties`,
-  `componentPropertyReferences`, `boundVariables`, `styles`. Autumn apps use
-  `maud` 0.27 directly (`autumn new` adds it), link
-  `/static/css/*.css`, theme widgets with `:root` tokens, and serve under a
-  strict CSP. Autumn's CLI has no external-subcommand hook.
+- **White (facts).**
+  - The Figma REST API has `GET /v1/files/:key` (with `ids`),
+    `GET /v1/files/:key/variables/local`, and `GET /v1/images/:key`.
+  - The variables API needs an Enterprise plan and the
+    `file_variables:read` scope.
+  - Nodes carry auto-layout fields, component properties, property
+    references, bound variables, and style ids.
+  - Autumn apps use `maud` 0.27 directly. `autumn new` adds it.
+  - Autumn widgets take their colors from `:root` tokens.
+  - Autumn serves pages under a strict CSP.
+  - The Autumn CLI has no external-subcommand hook.
 - **Red (feelings).** Developers distrust "design to code" output that is a
   pile of absolute `div`s. Designers do not want to learn htmx. Both want
   the design to stay the source of truth for look, and code to stay the
@@ -151,7 +154,7 @@ Ideas, not filtered:
 | AC-13 | Instances of local components become calls with arguments from the instance. Remote instances are inlined. |
 | AC-14 | Bindings apply `tag`, `id`, `attrs` (htmx), `slot`, and `text` by path or node id. An unmatched or invalid binding is an error. |
 | AC-15 | Each component takes `&Attrs`, so a caller (or a binding on an instance) sets root attributes such as `hx-post`. |
-| AC-16 | Safety: no inline styles, no `PreEscaped`, escaped literals, sanitized identifiers and classes, allow-listed tags and attribute names. |
+| AC-16 | Safety: no inline styles or inline event handlers, no `PreEscaped`, escaped literals, sanitized identifiers and classes, allow-listed tags and attribute names. |
 | AC-17 | The generated code compiles and renders the expected HTML (compile + render test). |
 | AC-18 | Icon-like nodes and image fills export as assets during `pull`, and render as `img`. |
 | AC-19 | Hidden nodes are skipped (unless a BOOLEAN property shows them). Unsupported nodes give a diagnostic. Bad JSON is an error, never a panic. |
@@ -168,14 +171,27 @@ Ideas, not filtered:
   `tests/golden/`. `UPDATE_GOLDEN=1` rewrites the files.
 - `tests/golden_render.rs`: includes the golden Rust modules, renders them
   with `maud`, and checks the HTML.
-- `tests/cli.rs`: runs the binary for `init`, `generate`, `--check`, and
-  `pull` against a local stub API.
+- `src/cli/tests.rs`: runs the CLI in-process for `init`, `generate`,
+  `--check`, `pull`, and `sync` against a local stub API.
+- `tests/binary.rs`: runs the real binary for the exit codes.
+- `tests/fixtures/edge`: unusual and hostile designs. Its golden output
+  also builds under pedantic clippy.
 - Property tests: names are valid identifiers; any layer name gives code
   that is stable and escaped.
+
+## Review
+
+Four agents reviewed the first version: generator correctness, security,
+Figma API fidelity, and docs with Autumn fit. Each confirmed finding has a
+fix and a regression test. The commits "fix: security review findings",
+"fix: generator correctness review findings", "fix: Figma API fidelity
+review findings", and the docs and UX commit hold them.
 
 ## Future work
 
 - An external-subcommand hook in the Autumn CLI, so `autumn figma sync` works.
+- Overrides of exposed nested instances (now a warning).
+- Rotation, constraints, and min/max sizes (rotation is now a warning).
 - Gradients, blend modes, and rich text runs.
 - Story-gallery entries for each component.
 - A Tailwind output mode.

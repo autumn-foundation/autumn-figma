@@ -330,6 +330,22 @@ fn mod_rs_lists_modules_and_attrs() {
     assert!(out.contains("pub struct Attrs<'a> {\n"), "{out}");
     assert!(out.contains("    pub hx_post: Option<&'a str>,\n"), "{out}");
     assert!(out.contains("    pub type_: Option<&'a str>,\n"), "{out}");
+    for field in [
+        "hx_swap_oob",
+        "hx_headers",
+        "hx_ext",
+        "hx_sync",
+        "hx_disabled_elt",
+        "role",
+        "title",
+        "disabled",
+        "class",
+    ] {
+        assert!(
+            out.contains(&format!("    pub {field}: Option<&'a str>,\n")),
+            "{field}: {out}"
+        );
+    }
     assert!(out.contains("impl Attrs<'static> {\n"), "{out}");
     assert!(out.contains("    pub const NONE: Self = Self {\n"), "{out}");
 }

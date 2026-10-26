@@ -39,6 +39,9 @@ pub const API_BASE_ENV: &str = "FIGMA_API_BASE";
 /// The Figma REST API base URL.
 pub const DEFAULT_API_BASE: &str = "https://api.figma.com";
 
+/// The `file_key` that `init` writes without a key.
+pub const KEY_PLACEHOLDER: &str = "PASTE_FILE_KEY_OR_URL";
+
 /// The default config file name.
 pub const CONFIG_FILE: &str = "figma.toml";
 
@@ -185,7 +188,7 @@ impl Config {
     ///
     /// [`ErrorKind::Config`] when the text is not valid.
     pub fn from_toml_str(src: &str, root: &Path) -> Result<Self> {
-        let table: toml::Table = toml::from_str(src).map_err(|e| config_err(e.message()))?;
+        let table: toml::Table = toml::from_str(src).map_err(|e| toml_err(src, &e))?;
         if let Some(key) = ["token", "figma_token", "access_token"]
             .into_iter()
             .find(|k| table.contains_key(*k))
@@ -194,7 +197,12 @@ impl Config {
                 "remove `{key}`: the token goes only in the {TOKEN_ENV} environment variable"
             )));
         }
-        let raw: RawConfig = toml::from_str(src).map_err(|e| config_err(e.message()))?;
+        let raw: RawConfig = toml::from_str(src).map_err(|e| toml_err(src, &e))?;
+        if raw.file_key.as_deref() == Some(KEY_PLACEHOLDER) {
+            return Err(config_err(
+                "file_key is still the placeholder. Paste the key or the URL of your Figma file.",
+            ));
+        }
         let file_key = parse_file_key(raw.file_key.as_deref().unwrap_or_default())
             .map_err(|e| config_err(&format!("file_key: {}", e.message())))?;
         let path = |name: &str, value: Option<String>, default: &str| -> Result<PathBuf> {
@@ -362,6 +370,18 @@ impl RawBinding {
     }
 }
 
+/// A TOML error with its line and column, but without the source line
+/// (which can hold a secret).
+fn toml_err(src: &str, e: &toml::de::Error) -> Error {
+    let Some(span) = e.span() else {
+        return config_err(e.message());
+    };
+    let before = &src[..span.start.min(src.len())];
+    let line = before.matches('\n').count() + 1;
+    let column = before.chars().rev().take_while(|c| *c != '\n').count() + 1;
+    config_err(&format!("line {line}, column {column}: {}", e.message()))
+}
+
 fn config_err(message: &str) -> Error {
     Error::new(ErrorKind::Config, message.trim())
 }
@@ -400,6 +420,11 @@ fn check_attr_name(at: &str, name: &str) -> Result<()> {
     if !valid {
         return Err(config_err(&format!(
             "[[bind]] {at}: attribute name {name:?} is not valid; use lowercase letters, digits, and - _ : . @"
+        )));
+    }
+    if name.starts_with("on") || name.starts_with("hx-on") {
+        return Err(config_err(&format!(
+            "[[bind]] {at}: attribute {name:?} is an inline handler; inline handlers break Autumn's Content-Security-Policy. Use hx-* attributes, or a script in static/."
         )));
     }
     match name {
@@ -623,11 +648,12 @@ pub fn starter_toml(file_key: &str) -> String {
     format!(
         r##"# autumn-figma: Figma design to Maud components.
 # The token never goes here. Export FIGMA_TOKEN before `autumn-figma pull`.
+# The token needs the file_content:read scope.
 
 # The file key, or the full Figma URL of the file.
 file_key = "{file_key}"
 
-# The pages to generate. Remove the line to generate all pages.
+# The pages to generate. Without this line, the tool generates all pages.
 # pages = ["Components", "Screens"]
 
 # Output paths, relative to this file. These are the defaults.

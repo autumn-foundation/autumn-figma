@@ -100,13 +100,13 @@ impl FigmaClient {
 
     /// Send an API request. Retry a short rate limit. Map the status to
     /// an error kind.
-    async fn send(request: reqwest::RequestBuilder) -> Result<Vec<u8>> {
+    async fn send(&self, request: reqwest::RequestBuilder) -> Result<Vec<u8>> {
         let mut attempt = 0;
         loop {
             let this_try = request
                 .try_clone()
                 .ok_or_else(|| Error::new(ErrorKind::Http, "the request cannot repeat"))?;
-            match Self::send_once(this_try).await {
+            match self.send_once(this_try).await {
                 Err(e)
                     if e.kind() == ErrorKind::RateLimited
                         && attempt < MAX_RETRIES
@@ -121,11 +121,11 @@ impl FigmaClient {
         }
     }
 
-    async fn send_once(request: reqwest::RequestBuilder) -> Result<Vec<u8>> {
+    async fn send_once(&self, request: reqwest::RequestBuilder) -> Result<Vec<u8>> {
         let response = request
             .send()
             .await
-            .map_err(|e| http_err("request failed", e))?;
+            .map_err(|e| http_err(&format!("request to {} failed", self.base), e))?;
         let status = response.status().as_u16();
         let header = |name: &str| {
             response
@@ -200,7 +200,7 @@ impl FigmaClient {
         if let Some(depth) = depth {
             request = request.query(&[("depth", depth)]);
         }
-        Self::send(request).await
+        self.send(request).await
     }
 
     /// `GET /v1/files/:key/variables/local`. Returns `None` on 403 or 404:
@@ -211,7 +211,10 @@ impl FigmaClient {
     /// As [`Self::file`], except 403 and 404.
     pub async fn variables(&self, key: &str) -> Result<Option<Vec<u8>>> {
         Self::check_key(key)?;
-        match Self::send(self.api(&format!("/v1/files/{key}/variables/local"))).await {
+        match self
+            .send(self.api(&format!("/v1/files/{key}/variables/local")))
+            .await
+        {
             Ok(body) => Ok(Some(body)),
             Err(e) if matches!(e.kind(), ErrorKind::Auth | ErrorKind::NotFound) => Ok(None),
             Err(e) => Err(e),
@@ -244,7 +247,7 @@ impl FigmaClient {
         if let Some(version) = version {
             request = request.query(&[("version", version)]);
         }
-        let body = Self::send(request).await?;
+        let body = self.send(request).await?;
         let images: ImagesResponse = serde_json::from_slice(&body)
             .map_err(|e| Error::new(ErrorKind::Json, format!("Figma images: {e}")))?;
         if let Some(err) = images.err.as_deref().filter(|e| !e.is_empty()) {

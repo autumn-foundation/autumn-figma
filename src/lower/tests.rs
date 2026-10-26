@@ -334,7 +334,11 @@ fn assets_rules_tokens_and_notes() {
         "{notes:#?}"
     );
     assert!(
-        has(Level::Info, "Screens > Todos > Map embed", "not supported"),
+        has(
+            Level::Info,
+            "Screens > Todos > Map embed",
+            "does not support"
+        ),
         "{notes:#?}"
     );
     assert!(
@@ -858,4 +862,27 @@ fn a_frame_with_a_variable_mode_gets_data_theme() {
         "{:?}",
         page.attrs
     );
+}
+
+#[test]
+fn a_token_that_replaces_an_autumn_token_gives_a_warning() {
+    let vars = VariablesResponse::from_json(
+        r#"{"meta":{"variableCollections":{"C":{"id":"C","name":"T","defaultModeId":"m","modes":[{"modeId":"m","name":"V"}]}},
+            "variables":{"V:1":{"id":"V:1","name":"Text","variableCollectionId":"C","resolvedType":"COLOR","valuesByMode":{"m":{"r":0,"g":0,"b":0,"a":1}}}}}}"#,
+    )
+    .unwrap();
+    let l = lower(&doc(""), Some(&vars), &cfg("")).unwrap();
+    assert!(
+        l.diagnostics.iter().any(|d| d.message.contains("--text")),
+        "{:?}",
+        l.diagnostics
+    );
+    // A rename to an Autumn token is on purpose: no warning.
+    let l = lower(
+        &doc(""),
+        Some(&vars),
+        &cfg("[tokens]\n\"Text\" = \"--text\""),
+    )
+    .unwrap();
+    assert!(!l.diagnostics.iter().any(|d| d.message.contains("--text")));
 }

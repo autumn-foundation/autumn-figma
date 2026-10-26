@@ -42,7 +42,7 @@ pub fn in_group(
     attrs: &super::Attrs<'_>,
 ) -> Markup {
     html! {
-        div class=(super::classes("fg-in-group", attrs.class)) "id"=[attrs.id] "name"=[attrs.name] "value"=[attrs.value] "type"=[attrs.type_] "href"=[attrs.href] "aria-label"=[attrs.aria_label] "hx-get"=[attrs.hx_get] "hx-post"=[attrs.hx_post] "hx-put"=[attrs.hx_put] "hx-patch"=[attrs.hx_patch] "hx-delete"=[attrs.hx_delete] "hx-target"=[attrs.hx_target] "hx-swap"=[attrs.hx_swap] "hx-trigger"=[attrs.hx_trigger] "hx-vals"=[attrs.hx_vals] "hx-include"=[attrs.hx_include] "hx-confirm"=[attrs.hx_confirm] "hx-push-url"=[attrs.hx_push_url] "hx-select"=[attrs.hx_select] "hx-indicator"=[attrs.hx_indicator] "hx-boost"=[attrs.hx_boost] {
+        div class=(super::classes("fg-in-group", attrs.class)) "id"=[attrs.id] "name"=[attrs.name] "value"=[attrs.value] "type"=[attrs.type_] "href"=[attrs.href] "aria-label"=[attrs.aria_label] "role"=[attrs.role] "title"=[attrs.title] "disabled"=[attrs.disabled] "hx-get"=[attrs.hx_get] "hx-post"=[attrs.hx_post] "hx-put"=[attrs.hx_put] "hx-patch"=[attrs.hx_patch] "hx-delete"=[attrs.hx_delete] "hx-target"=[attrs.hx_target] "hx-swap"=[attrs.hx_swap] "hx-trigger"=[attrs.hx_trigger] "hx-vals"=[attrs.hx_vals] "hx-include"=[attrs.hx_include] "hx-confirm"=[attrs.hx_confirm] "hx-push-url"=[attrs.hx_push_url] "hx-select"=[attrs.hx_select] "hx-indicator"=[attrs.hx_indicator] "hx-boost"=[attrs.hx_boost] "hx-swap-oob"=[attrs.hx_swap_oob] "hx-headers"=[attrs.hx_headers] "hx-ext"=[attrs.hx_ext] "hx-sync"=[attrs.hx_sync] "hx-disabled-elt"=[attrs.hx_disabled_elt] {
             span class="fg-in-group__t" { "inside a group" }
         }
     }

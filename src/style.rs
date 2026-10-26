@@ -94,7 +94,7 @@ pub fn node_decls(node: &Node, parent: Parent, role: Role, cx: &mut StyleCx<'_>)
     if node.rotation.is_some_and(|r| r.abs() > 0.01) {
         cx.diagnostics.push(Diagnostic::warning(
             cx.path,
-            "rotation is not supported; the layer renders without it",
+            "The generator does not support rotation. The layer renders without it.",
         ));
     }
     match role {
@@ -201,7 +201,7 @@ fn layout(node: &Node, absolute_box: bool, d: &mut Decls, cx: &mut StyleCx<'_>) 
             if node.item_spacing.is_some_and(|s| s < 0.0) {
                 cx.diagnostics.push(Diagnostic::warning(
                     cx.path,
-                    "negative item spacing (overlap) is not supported; the items do not overlap",
+                    "The generator does not support negative item spacing. The items do not overlap.",
                 ));
             }
             let item = spacing(node, "itemSpacing", node.item_spacing, cx)
@@ -278,7 +278,7 @@ fn layout(node: &Node, absolute_box: bool, d: &mut Decls, cx: &mut StyleCx<'_>) 
     if absolute_box {
         cx.diagnostics.push(Diagnostic::warning(
             cx.path,
-            "the frame has no auto layout, so its children use absolute positions; add auto layout in Figma for responsive output",
+            "The frame has no auto layout. Its children get absolute positions. Add auto layout in Figma for a responsive result.",
         ));
     }
 }
@@ -513,11 +513,11 @@ fn paint(node: &Node, role: Role, d: &mut Decls, cx: &mut StyleCx<'_>) {
         }
         PaintType::Image => cx.diagnostics.push(Diagnostic::warning(
             cx.path,
-            "an image fill on a layer with children is not supported; the fill is dropped",
+            "The generator does not support an image fill on a layer with children. It removes the fill.",
         )),
         kind => cx.diagnostics.push(Diagnostic::warning(
             cx.path,
-            format!("{kind:?} fill is not supported; the layer has no background"),
+            format!("The generator does not support a {kind:?} fill. The layer has no background."),
         )),
     }
 }
