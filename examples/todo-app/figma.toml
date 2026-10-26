@@ -1,0 +1,38 @@
+# The todo design, wired for htmx. Same bindings as the test fixture.
+file_key = "AbC123xyz"
+pages = ["Components", "Screens"]
+
+[tokens]
+"color/brand/primary" = "--primary"
+
+[[bind]]
+path = "Components > Todo row"
+tag = "li"
+
+[[bind]]
+path = "Screens > Todos > Title"
+tag = "h1"
+
+[[bind]]
+path = "Screens > Todos > New todo"
+tag = "form"
+attrs = { "hx-post" = "/todos", "hx-target" = "#todo-list", "hx-swap" = "beforeend" }
+
+[[bind]]
+path = "Screens > Todos > New todo > input"
+attrs = { name = "title", required = "required" }
+
+[[bind]]
+path = "Screens > Todos > New todo > Add"
+attrs = { type = "submit" }
+
+[[bind]]
+path = "Screens > Todos > List"
+tag = "ul"
+id = "todo-list"
+slot = "items"
+
+[[bind]]
+node = "2:9"
+id = "count"
+text = "remaining"

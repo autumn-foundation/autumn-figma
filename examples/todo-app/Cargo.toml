@@ -1,0 +1,13 @@
+[package]
+name = "figma-todo-app"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+autumn-web = { version = "0.8", default-features = false, features = ["maud", "htmx"] }
+maud = { version = "0.27", features = ["axum"] }
+serde = { version = "1", features = ["derive"] }
+
+# Not part of the plugin crate: build it on its own.
+[workspace]

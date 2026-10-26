@@ -1,0 +1,167 @@
+{
+  "error": false,
+  "meta": {
+    "variableCollections": {
+      "VariableCollectionId:1:0": {
+        "defaultModeId": "1:0",
+        "hiddenFromPublishing": false,
+        "id": "VariableCollectionId:1:0",
+        "key": "t",
+        "modes": [
+          {
+            "modeId": "1:0",
+            "name": "Light"
+          },
+          {
+            "modeId": "1:1",
+            "name": "Dark"
+          }
+        ],
+        "name": "Theme",
+        "remote": false,
+        "variableIds": [
+          "VariableID:1:1",
+          "VariableID:1:2",
+          "VariableID:1:3"
+        ]
+      },
+      "VariableCollectionId:2:0": {
+        "defaultModeId": "2:0",
+        "hiddenFromPublishing": false,
+        "id": "VariableCollectionId:2:0",
+        "key": "p",
+        "modes": [
+          {
+            "modeId": "2:0",
+            "name": "Value"
+          }
+        ],
+        "name": "Primitives",
+        "remote": false,
+        "variableIds": [
+          "VariableID:1:4",
+          "VariableID:1:5"
+        ]
+      }
+    },
+    "variables": {
+      "VariableID:1:1": {
+        "codeSyntax": {},
+        "description": "",
+        "hiddenFromPublishing": false,
+        "id": "VariableID:1:1",
+        "key": "a",
+        "name": "color/brand/primary",
+        "remote": false,
+        "resolvedType": "COLOR",
+        "scopes": [
+          "ALL_FILLS"
+        ],
+        "valuesByMode": {
+          "1:0": {
+            "a": 1,
+            "b": 0.929,
+            "g": 0.227,
+            "r": 0.486
+          },
+          "1:1": {
+            "a": 1,
+            "b": 0.98,
+            "g": 0.545,
+            "r": 0.655
+          }
+        },
+        "variableCollectionId": "VariableCollectionId:1:0"
+      },
+      "VariableID:1:2": {
+        "codeSyntax": {},
+        "description": "",
+        "hiddenFromPublishing": false,
+        "id": "VariableID:1:2",
+        "key": "b",
+        "name": "color/surface",
+        "remote": false,
+        "resolvedType": "COLOR",
+        "scopes": [
+          "ALL_FILLS"
+        ],
+        "valuesByMode": {
+          "1:0": {
+            "a": 1,
+            "b": 1,
+            "g": 1,
+            "r": 1
+          },
+          "1:1": {
+            "a": 1,
+            "b": 0.153,
+            "g": 0.094,
+            "r": 0.067
+          }
+        },
+        "variableCollectionId": "VariableCollectionId:1:0"
+      },
+      "VariableID:1:3": {
+        "codeSyntax": {},
+        "description": "",
+        "hiddenFromPublishing": false,
+        "id": "VariableID:1:3",
+        "key": "c",
+        "name": "color/on-primary",
+        "remote": false,
+        "resolvedType": "COLOR",
+        "scopes": [
+          "TEXT_FILL"
+        ],
+        "valuesByMode": {
+          "1:0": {
+            "id": "VariableID:1:2",
+            "type": "VARIABLE_ALIAS"
+          },
+          "1:1": {
+            "a": 1,
+            "b": 1,
+            "g": 1,
+            "r": 1
+          }
+        },
+        "variableCollectionId": "VariableCollectionId:1:0"
+      },
+      "VariableID:1:4": {
+        "codeSyntax": {},
+        "description": "",
+        "hiddenFromPublishing": false,
+        "id": "VariableID:1:4",
+        "key": "d",
+        "name": "spacing/sm",
+        "remote": false,
+        "resolvedType": "FLOAT",
+        "scopes": [
+          "GAP"
+        ],
+        "valuesByMode": {
+          "2:0": 8
+        },
+        "variableCollectionId": "VariableCollectionId:2:0"
+      },
+      "VariableID:1:5": {
+        "codeSyntax": {},
+        "description": "",
+        "hiddenFromPublishing": false,
+        "id": "VariableID:1:5",
+        "key": "e",
+        "name": "font/weight/bold",
+        "remote": false,
+        "resolvedType": "FLOAT",
+        "scopes": [
+          "FONT_WEIGHT"
+        ],
+        "valuesByMode": {
+          "2:0": 700
+        },
+        "variableCollectionId": "VariableCollectionId:2:0"
+      }
+    }
+  },
+  "status": 200
+}
