@@ -143,6 +143,10 @@
   background-color: #ffffff;
   border: 1px solid #e5e7eb;
   border-radius: 6px;
+  font-family: "Inter", system-ui, sans-serif;
+  font-weight: 400;
+  font-size: 16px;
+  line-height: 24px;
 }
 
 .fg-todos__list {

@@ -307,6 +307,14 @@ fn assets_rules_tokens_and_notes() {
         rule("fg-todos__title").get("font"),
         Some("var(--heading-h1)")
     );
+    // An <input> keeps the type of the text layer it replaces, not its color.
+    let input = rule("fg-todos__input");
+    assert_eq!(input.get("font-size"), Some("16px"));
+    assert_eq!(
+        input.get("font-family"),
+        Some("\"Inter\", system-ui, sans-serif")
+    );
+    assert_eq!(input.get("color"), None);
     let css = l.tokens.css();
     assert!(css.contains("--primary: #7c3aed;"), "{css}");
     assert!(
@@ -557,5 +565,42 @@ fn hostile_names_stay_safe() {
     assert_eq!(
         child_el(el, 0).children,
         [Item::Text("<script>alert(1)</script>".into())]
+    );
+}
+
+#[test]
+fn a_swapped_instance_deep_in_an_instance_keeps_its_full_path() {
+    // Regression: the argument used the instance as its parent and path,
+    // so a binding on the real (deeper) path did not match.
+    let file = doc(
+        r#"{"id":"1","name":"Icon","type":"COMPONENT","children":[{"id":"1:1","type":"VECTOR"}]},
+           {"id":"2","name":"Card","type":"COMPONENT","componentPropertyDefinitions":{
+              "Glyph#1":{"type":"INSTANCE_SWAP","defaultValue":"1"}},
+            "children":[{"id":"2:1","name":"Wrap","type":"FRAME","children":[
+              {"id":"2:2","name":"Glyph","type":"INSTANCE","componentId":"1",
+               "componentPropertyReferences":{"mainComponent":"Glyph#1"}}]}]},
+           {"id":"3","name":"Screen","type":"FRAME","children":[
+             {"id":"4","name":"Card","type":"INSTANCE","componentId":"2",
+              "componentProperties":{"Glyph#1":{"type":"INSTANCE_SWAP","value":"1"}},
+              "children":[{"id":"I4;2:1","name":"Wrap","type":"FRAME","children":[
+                {"id":"I4;2:2","name":"Glyph","type":"INSTANCE","componentId":"1",
+                 "componentPropertyReferences":{"mainComponent":"Glyph#1"}}]}]}]}"#,
+    );
+    let l = lower(
+        &file,
+        None,
+        &cfg("[[bind]]\npath = \"Page > Screen > Card > Wrap > Glyph\"\nattrs = { aria-label = \"done\" }"),
+    )
+    .unwrap();
+    let screen = root(single(func(&l, "page", "screen")));
+    let Item::Call(card) = &screen.children[0] else {
+        panic!("not a call")
+    };
+    assert_eq!(
+        card.args[0],
+        Arg::Markup(vec![Item::Call(Call {
+            path: "super::page::icon".into(),
+            args: vec![Arg::Attrs(vec![("aria_label".into(), "done".into())])],
+        })])
     );
 }

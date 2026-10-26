@@ -20,11 +20,11 @@ struct Run {
 fn cli(cwd: &Path, args: &[&str], env: &BTreeMap<&str, String>) -> Run {
     let mut out = Vec::new();
     let mut err = Vec::new();
-    let argv = std::iter::once("autumn-figma")
+    let words = std::iter::once("autumn-figma")
         .chain(args.iter().copied())
         .map(OsString::from);
     let lookup = |k: &str| env.get(k).cloned();
-    let code = run(argv, &lookup, cwd, &mut out, &mut err);
+    let code = run(words, &lookup, cwd, &mut out, &mut err);
     Run {
         code,
         out: String::from_utf8(out).unwrap(),

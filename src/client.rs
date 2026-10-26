@@ -56,14 +56,16 @@ impl FigmaClient {
 
     /// Send a request. Map the status to an error kind.
     async fn send(request: reqwest::RequestBuilder) -> Result<Vec<u8>> {
-        let response = request
-            .send()
-            .await
-            .map_err(|e| Error::new(ErrorKind::Http, format!("request to Figma failed: {e}")))?;
+        let response = request.send().await.map_err(|e| {
+            // The caller names the URL. A signed URL must not reach a log.
+            let e = e.without_url();
+            Error::new(ErrorKind::Http, format!("request failed: {e}"))
+        })?;
         let status = response.status().as_u16();
         match status {
             200..=299 => response.bytes().await.map(|b| b.to_vec()).map_err(|e| {
-                Error::new(ErrorKind::Http, format!("reading the Figma response: {e}"))
+                let e = e.without_url();
+                Error::new(ErrorKind::Http, format!("reading the response: {e}"))
             }),
             401 | 403 => Err(Error::new(
                 ErrorKind::Auth,
@@ -173,9 +175,14 @@ impl FigmaClient {
     ///
     /// [`ErrorKind::Http`] on any failure.
     pub async fn download(&self, url: &str) -> Result<Vec<u8>> {
-        Self::send(self.http.get(url))
-            .await
-            .map_err(|e| Error::new(ErrorKind::Http, format!("download {url}: {}", e.message())))
+        Self::send(self.http.get(url)).await.map_err(|e| {
+            // A signed URL carries its signature in the query. Keep it out of logs.
+            let shown = url.split('?').next().unwrap_or_default();
+            Error::new(
+                ErrorKind::Http,
+                format!("download {shown}: {}", e.message()),
+            )
+        })
     }
 }
 

@@ -20,3 +20,13 @@ jobs:
         run: cargo test --locked --all-targets --all-features
         env:
           TMPDIR: ${{ runner.temp }}
+      - name: example is in sync with its snapshot
+        run: cargo run --locked -- --config examples/todo-app/figma.toml generate --check
+
+  example:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: build the example Autumn app
+        run: cargo build --locked --manifest-path examples/todo-app/Cargo.toml

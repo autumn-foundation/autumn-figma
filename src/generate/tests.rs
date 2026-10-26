@@ -110,7 +110,7 @@ fn drift_finds_changed_and_stale_files() {
     fs::write(&mine, "// my own code\n").unwrap();
 
     let out = generate(&config).unwrap();
-    assert_eq!(out.stale, [stale.clone()]);
+    assert_eq!(out.stale, std::slice::from_ref(&stale));
     let drift = out.drift().unwrap();
     assert_eq!(
         drift,
@@ -119,7 +119,7 @@ fn drift_finds_changed_and_stale_files() {
 
     let report = out.write().unwrap();
     assert_eq!(report.written, [screens]);
-    assert_eq!(report.deleted, [stale.clone()]);
+    assert_eq!(report.deleted, std::slice::from_ref(&stale));
     assert!(!stale.exists());
     assert!(mine.exists(), "files without the header stay");
     assert!(

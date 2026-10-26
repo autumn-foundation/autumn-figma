@@ -435,7 +435,7 @@ fn radius(node: &Node, d: &mut Decls, cx: &StyleCx<'_>) {
         return;
     }
     if let Some(radii) = node.rectangle_corner_radii {
-        if radii.iter().any(|r| *r != radii[0]) {
+        if radii.iter().any(|r| (r - radii[0]).abs() > f64::EPSILON) {
             let parts: Vec<String> = radii.iter().map(|r| px(*r)).collect();
             d.push("border-radius", parts.join(" "));
             return;

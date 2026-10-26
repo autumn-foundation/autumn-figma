@@ -108,6 +108,17 @@ async fn images_and_downloads() {
 }
 
 #[tokio::test]
+async fn download_errors_hide_the_signed_query() {
+    let err = client("http://127.0.0.1:1")
+        .download("http://127.0.0.1:1/img.png?X-Amz-Signature=secret")
+        .await
+        .unwrap_err();
+    assert_eq!(err.kind(), ErrorKind::Http);
+    assert!(err.message().contains("/img.png"), "{err}");
+    assert!(!err.message().contains("secret"), "{err}");
+}
+
+#[tokio::test]
 async fn transport_errors_are_http_errors() {
     let err = client("http://127.0.0.1:1")
         .file("K", &[], None)

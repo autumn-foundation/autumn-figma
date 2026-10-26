@@ -245,7 +245,7 @@ impl<'a> Plan<'a> {
             by_component: BTreeMap::new(),
         };
         let mut module_names = Allocator::new("_");
-        let mut found: Vec<(String, String, Vec<(&'a Node, DefKind, Vec<String>)>)> = Vec::new();
+        let mut found: Vec<(String, String, Vec<Found<'a>>)> = Vec::new();
         for page in pages {
             let mut defs = Vec::new();
             let path = vec![page.name.clone()];
@@ -283,16 +283,9 @@ impl<'a> Plan<'a> {
             };
             for (node, kind, path) in defs {
                 let name = fn_names.claim(&snake_ident(&node.name));
-                let sig = signature(
-                    node,
-                    kind,
-                    &path,
-                    &module,
-                    name,
-                    config,
-                    &locals,
-                    &mut enum_names,
-                );
+                let found = (node, kind, path);
+                let sig = signature(&found, &module, name, config, &locals, &mut enum_names);
+                let (node, kind, path) = found;
                 let index = plan.sigs.len();
                 match kind {
                     DefKind::Set => {
@@ -323,11 +316,14 @@ impl<'a> Plan<'a> {
     }
 }
 
+/// A function found on a page: its node, kind, and layer path.
+type Found<'a> = (&'a Node, DefKind, Vec<String>);
+
 /// Collect the functions under one child of a page.
 fn top_level<'a>(
     node: &'a Node,
     parent: &[String],
-    defs: &mut Vec<(&'a Node, DefKind, Vec<String>)>,
+    defs: &mut Vec<Found<'a>>,
     diagnostics: &mut Vec<Diagnostic>,
 ) {
     let path = child_path(parent, node);
@@ -351,11 +347,7 @@ fn top_level<'a>(
 }
 
 /// Components that sit inside a screen frame.
-fn nested_components<'a>(
-    node: &'a Node,
-    path: &[String],
-    defs: &mut Vec<(&'a Node, DefKind, Vec<String>)>,
-) {
+fn nested_components<'a>(node: &'a Node, path: &[String], defs: &mut Vec<Found<'a>>) {
     for child in &node.children {
         let p = child_path(path, child);
         match child.kind {
@@ -367,17 +359,15 @@ fn nested_components<'a>(
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 fn signature(
-    node: &Node,
-    kind: DefKind,
-    path: &[String],
+    found: &Found<'_>,
     module: &str,
     name: String,
     config: &Config,
     locals: &BTreeSet<String>,
     enum_names: &mut Allocator,
 ) -> Sig {
+    let (node, kind, path) = (found.0, found.1, found.2.as_slice());
     let mut params = Vec::new();
     let mut param_names = Allocator::new("_");
     param_names.reserve("attrs");
@@ -553,6 +543,19 @@ const BOX_NAME_TAGS: &[&str] = &[
     "header", "input", "li", "main", "nav", "ol", "section", "select", "table", "textarea", "ul",
 ];
 
+/// Text properties that an `<input>` takes from the text layer it replaces.
+const TYPE_PROPERTIES: &[&str] = &[
+    "font",
+    "font-family",
+    "font-size",
+    "font-style",
+    "font-weight",
+    "letter-spacing",
+    "line-height",
+    "text-align",
+    "text-transform",
+];
+
 /// Tags that an exact text layer name selects.
 const TEXT_NAME_TAGS: &[&str] = &[
     "a", "em", "h1", "h2", "h3", "h4", "h5", "h6", "p", "small", "strong",
@@ -626,7 +629,12 @@ impl Lowerer<'_> {
                 let parent = Parent::Root {
                     screen: def.kind == DefKind::Screen,
                 };
-                let item = self.node(def.node, &def.path, parent, &scope, true)?;
+                let site = Site {
+                    path: &def.path,
+                    parent,
+                    root: true,
+                };
+                let item = self.node(def.node, site, &scope)?;
                 let what = if def.kind == DefKind::Screen {
                     "frame"
                 } else {
@@ -688,10 +696,12 @@ impl Lowerer<'_> {
                 continue;
             }
             scope.slug = format!("{set_slug}--{}", slug(&variant.name));
-            let body: Vec<Item> = self
-                .node(variant, &path, Parent::Root { screen: false }, scope, true)?
-                .into_iter()
-                .collect();
+            let site = Site {
+                path: &path,
+                parent: Parent::Root { screen: false },
+                root: true,
+            };
+            let body: Vec<Item> = self.node(variant, site, scope)?.into_iter().collect();
             if is_default {
                 default_arm = Some(arms.len());
             }
@@ -792,27 +802,20 @@ impl Lowerer<'_> {
     }
 
     /// Lower one node. `None` when it renders nothing.
-    fn node(
-        &mut self,
-        node: &Node,
-        path: &[String],
-        parent: Parent,
-        scope: &Scope,
-        root: bool,
-    ) -> Result<Option<Item>> {
-        let binding = self.binding(node, path)?;
+    fn node(&mut self, node: &Node, site: Site<'_>, scope: &Scope) -> Result<Option<Item>> {
+        let binding = self.binding(node, site.path)?;
         let shown_by = node
             .component_property_references
             .get("visible")
             .and_then(|key| scope.props.get(key))
             .filter(|(_, kind)| *kind == PropertyType::Boolean)
             .map(|(name, _)| name.clone());
-        if !node.visible && shown_by.is_none() && !root {
+        if !node.visible && shown_by.is_none() && !site.root {
             return Ok(None);
         }
-        let item = self.visible_node(node, path, parent, scope, root, binding)?;
+        let item = self.visible_node(node, site, scope, binding.as_ref())?;
         Ok(item.map(|item| match shown_by {
-            Some(cond) if !root => Item::If {
+            Some(cond) if !site.root => Item::If {
                 cond,
                 body: vec![item],
             },
@@ -823,13 +826,10 @@ impl Lowerer<'_> {
     fn visible_node(
         &mut self,
         node: &Node,
-        path: &[String],
-        parent: Parent,
+        site: Site<'_>,
         scope: &Scope,
-        root: bool,
-        binding: Option<(usize, Binding)>,
+        binding: Option<&(usize, Binding)>,
     ) -> Result<Option<Item>> {
-        let path_text = path.join(" > ");
         for (field, key) in &node.component_property_references {
             if field == "visible" || field == "characters" {
                 continue;
@@ -845,64 +845,51 @@ impl Lowerer<'_> {
             NodeType::Other | NodeType::Document | NodeType::Canvas
         ) {
             self.diagnostics.push(Diagnostic::info(
-                path_text,
+                site.text(),
                 "this layer type is not supported; it is skipped",
             ));
             return Ok(None);
         }
-        let local = if root {
-            None
-        } else {
-            match node.kind {
-                NodeType::Instance => node
-                    .component_id
-                    .as_ref()
-                    .and_then(|id| self.by_component.get(id).cloned()),
-                NodeType::Component | NodeType::ComponentSet => {
-                    self.by_component.get(&node.id).cloned()
-                }
+        if !site.root {
+            let local = match node.kind {
+                NodeType::Instance => node.component_id.as_ref(),
+                NodeType::Component | NodeType::ComponentSet => Some(&node.id),
                 _ => None,
             }
-        };
-        if let Some((sig, values)) = local {
-            let instance = node.kind == NodeType::Instance;
-            return self
-                .call(
+            .and_then(|id| self.by_component.get(id).cloned());
+            if let Some((sig, values)) = local {
+                let target = CallSite {
                     node,
-                    instance,
-                    sig,
-                    &values,
-                    path,
-                    scope,
-                    binding.map(|b| b.1),
-                )
-                .map(Some);
+                    instance: node.kind == NodeType::Instance,
+                    values: &values,
+                    path: site.path,
+                };
+                return self
+                    .call(&target, sig, scope, binding.map(|b| &b.1))
+                    .map(Some);
+            }
         }
         if let Some(asset) = assets::asset_of(node) {
             return self
-                .image(node, asset, path, parent, scope, root, binding)
+                .image(node, asset, site, scope, binding.map(|b| &b.1))
                 .map(Some);
         }
         if node.kind == NodeType::Text {
-            return self.text(node, path, parent, scope, binding).map(Some);
+            return self.text(node, site, scope, binding).map(Some);
         }
-        self.container(node, path, parent, scope, root, binding)
-            .map(Some)
+        self.container(node, site, scope, binding).map(Some)
     }
 
     fn image(
         &mut self,
         node: &Node,
         asset: Asset,
-        path: &[String],
-        parent: Parent,
+        site: Site<'_>,
         scope: &Scope,
-        root: bool,
-        binding: Option<(usize, Binding)>,
+        bind: Option<&Binding>,
     ) -> Result<Item> {
-        let path_text = path.join(" > ");
-        let bind = binding.map(|b| b.1);
-        if let Some(b) = &bind {
+        let path_text = site.text();
+        if let Some(b) = bind {
             if b.slot.is_some() || b.text.is_some() {
                 return Err(binding_err(format!(
                     "[[bind]] {path_text}: the layer exports as an image, so it takes no slot or text"
@@ -915,13 +902,13 @@ impl Lowerer<'_> {
                 ));
             }
         }
-        let decls = self.decls(node, parent, Role::Image, &path_text);
-        let class = self.class(scope, node, root, decls);
+        let decls = self.decls(node, site.parent, Role::Image, &path_text);
+        let class = self.class(scope, node, site.root, decls);
         let mut attrs = vec![(
             "src".to_owned(),
             format!("{}/{}", self.config.assets_url, asset.file_name),
         )];
-        let extra = bind.as_ref().map(|b| b.attrs.clone()).unwrap_or_default();
+        let extra = bind.map(|b| b.attrs.clone()).unwrap_or_default();
         if !extra.contains_key("alt") {
             attrs.push(("alt".to_owned(), String::new()));
         }
@@ -930,9 +917,9 @@ impl Lowerer<'_> {
         Ok(Item::Element(Element {
             tag: "img".to_owned(),
             class,
-            id: bind.and_then(|b| b.id),
+            id: bind.and_then(|b| b.id.clone()),
             attrs,
-            root_attrs: root && scope.root_attrs,
+            root_attrs: site.root && scope.root_attrs,
             children: Vec::new(),
         }))
     }
@@ -940,15 +927,13 @@ impl Lowerer<'_> {
     fn text(
         &mut self,
         node: &Node,
-        path: &[String],
-        parent: Parent,
+        site: Site<'_>,
         scope: &Scope,
-        binding: Option<(usize, Binding)>,
+        binding: Option<&(usize, Binding)>,
     ) -> Result<Item> {
-        let path_text = path.join(" > ");
-        if let Some((_, b)) = &binding
-            && b.slot.is_some()
-        {
+        let path_text = site.text();
+        let bind = binding.map(|b| &b.1);
+        if bind.is_some_and(|b| b.slot.is_some()) {
             return Err(binding_err(format!(
                 "[[bind]] {path_text}: `slot` needs a layer with children, and this is a text layer"
             )));
@@ -961,25 +946,22 @@ impl Lowerer<'_> {
             .map(|(name, _)| Item::Param(name.clone()))
             .or_else(|| {
                 binding
-                    .as_ref()
                     .and_then(|(i, _)| scope.binds.get(i))
                     .map(|name| Item::Param(name.clone()))
             })
             .unwrap_or_else(|| Item::Text(node.characters.clone().unwrap_or_default()));
-        let bind = binding.map(|b| b.1);
         let tag = bind
-            .as_ref()
             .and_then(|b| b.tag.clone())
             .or_else(|| name_tag(&node.name, true))
             .unwrap_or_else(|| "span".to_owned());
-        let decls = self.decls(node, parent, Role::Text, &path_text);
+        let decls = self.decls(node, site.parent, Role::Text, &path_text);
         let class = self.class(scope, node, false, decls);
         Ok(Item::Element(Element {
             tag,
             class,
-            id: bind.as_ref().and_then(|b| b.id.clone()),
+            id: bind.and_then(|b| b.id.clone()),
             attrs: bind
-                .map(|b| b.attrs.into_iter().collect())
+                .map(|b| b.attrs.clone().into_iter().collect())
                 .unwrap_or_default(),
             root_attrs: false,
             children: vec![content],
@@ -989,33 +971,63 @@ impl Lowerer<'_> {
     fn container(
         &mut self,
         node: &Node,
-        path: &[String],
-        parent: Parent,
+        site: Site<'_>,
         scope: &Scope,
-        root: bool,
-        binding: Option<(usize, Binding)>,
+        binding: Option<&(usize, Binding)>,
     ) -> Result<Item> {
-        let path_text = path.join(" > ");
-        if let Some((_, b)) = &binding
-            && b.text.is_some()
-        {
+        let path_text = site.text();
+        let bind = binding.map(|b| &b.1);
+        if bind.is_some_and(|b| b.text.is_some()) {
             return Err(binding_err(format!(
                 "[[bind]] {path_text}: `text` needs a text layer, and this layer is a {:?}",
                 node.kind
             )));
         }
-        let name_for_tag = if root { &scope.root_name } else { &node.name };
-        let bind = binding.as_ref().map(|b| &b.1);
+        let name_for_tag = if site.root {
+            &scope.root_name
+        } else {
+            &node.name
+        };
         let tag = bind
             .and_then(|b| b.tag.clone())
             .or_else(|| name_tag(name_for_tag, false))
             .unwrap_or_else(|| "div".to_owned());
-        let decls = self.decls(node, parent, Role::Box, &path_text);
-        let class = self.class(scope, node, root, decls);
+        let mut decls = self.decls(node, site.parent, Role::Box, &path_text);
         let mut attrs = Vec::new();
         let mut children = Vec::new();
         let takes_children = !matches!(tag.as_str(), "input" | "textarea" | "img" | "hr");
-        if let Some(param) = binding.as_ref().and_then(|(i, _)| scope.binds.get(i)) {
+        if !takes_children && node.children.iter().any(|c| c.visible) {
+            let text = find(node, &|n| n.visible && n.kind == NodeType::Text);
+            let has_own = bind.is_some_and(|b| b.attrs.contains_key("placeholder"));
+            let message = match (text, tag.as_str()) {
+                (Some(t), "input" | "textarea") => {
+                    if !has_own {
+                        let placeholder = t.characters.clone().unwrap_or_default();
+                        attrs.push(("placeholder".to_owned(), placeholder));
+                    }
+                    // The typed text takes the type of the text layer. The
+                    // color stays out: the layer shows placeholder text.
+                    let text_decls = self.decls(t, site.parent, Role::Text, &path_text);
+                    decls.0.extend(
+                        text_decls
+                            .0
+                            .into_iter()
+                            .filter(|(p, _)| TYPE_PROPERTIES.contains(&p.as_str())),
+                    );
+                    if has_own {
+                        format!("the children of <{tag}> are dropped")
+                    } else {
+                        format!(
+                            "the children of <{tag}> are dropped; the first text is the placeholder"
+                        )
+                    }
+                }
+                _ => format!("the children of <{tag}> are dropped"),
+            };
+            self.diagnostics.push(Diagnostic::info(&path_text, message));
+        }
+        let class = self.class(scope, node, site.root, decls);
+        if let Some(param) = binding.and_then(|(i, _)| scope.binds.get(i)) {
             if !takes_children {
                 return Err(binding_err(format!(
                     "[[bind]] {path_text}: a <{tag}> takes no children, so it takes no slot"
@@ -1024,25 +1036,16 @@ impl Lowerer<'_> {
             children.push(Item::Param(param.clone()));
         } else if takes_children {
             for child in &node.children {
-                let p = child_path(path, child);
-                if let Some(item) = self.node(child, &p, child_parent(node, child), scope, false)? {
+                let path = child_path(site.path, child);
+                let child_site = Site {
+                    path: &path,
+                    parent: child_parent(node, child),
+                    root: false,
+                };
+                if let Some(item) = self.node(child, child_site, scope)? {
                     children.push(item);
                 }
             }
-        } else if node.children.iter().any(|c| c.visible) {
-            let placeholder = find(node, &|n| n.visible && n.kind == NodeType::Text)
-                .and_then(|t| t.characters.clone());
-            let has_own = bind.is_some_and(|b| b.attrs.contains_key("placeholder"));
-            let note = match (&placeholder, tag.as_str()) {
-                (Some(text), "input" | "textarea") if !has_own => {
-                    attrs.push(("placeholder".to_owned(), text.clone()));
-                    format!(
-                        "the children of <{tag}> are dropped; the first text is the placeholder"
-                    )
-                }
-                _ => format!("the children of <{tag}> are dropped"),
-            };
-            self.diagnostics.push(Diagnostic::info(&path_text, note));
         }
         if let Some(b) = bind {
             attrs.extend(b.attrs.clone());
@@ -1052,129 +1055,27 @@ impl Lowerer<'_> {
             class,
             id: bind.and_then(|b| b.id.clone()),
             attrs,
-            root_attrs: root && scope.root_attrs,
+            root_attrs: site.root && scope.root_attrs,
             children,
         }))
     }
 
     /// A call of a local component for an instance (or a definition placed
     /// in a frame, with default values).
-    #[allow(clippy::too_many_arguments)]
     fn call(
         &mut self,
-        node: &Node,
-        instance: bool,
+        target: &CallSite<'_>,
         sig_index: usize,
-        values: &BTreeMap<String, String>,
-        path: &[String],
         scope: &Scope,
-        binding: Option<Binding>,
+        bind: Option<&Binding>,
     ) -> Result<Item> {
-        let path_text = path.join(" > ");
         let sig = self.sigs[sig_index].clone();
-        let mut fields = Vec::new();
-        if let Some(b) = &binding {
-            if b.tag.is_some() || b.slot.is_some() || b.text.is_some() {
-                return Err(binding_err(format!(
-                    "[[bind]] {path_text}: a binding on a component instance sets only `id` and `attrs`; bind the component definition for tag, slot, or text"
-                )));
-            }
-            for name in b.attrs.keys() {
-                if root_attr_field(name).is_none() {
-                    let allowed: Vec<&str> = ROOT_ATTRS.iter().map(|(h, _)| *h).collect();
-                    return Err(binding_err(format!(
-                        "[[bind]] {path_text}: {name:?} cannot pass to a component root; use one of {}",
-                        allowed.join(", ")
-                    )));
-                }
-            }
-            for (html, field) in ROOT_ATTRS {
-                let value = if *html == "id" {
-                    b.id.clone()
-                } else {
-                    b.attrs.get(*html).cloned()
-                };
-                if let Some(value) = value {
-                    fields.push(((*field).to_owned(), value));
-                }
-            }
-        }
-        let props = if instance {
-            node.component_properties.clone()
-        } else {
-            BTreeMap::new()
-        };
+        let fields = root_fields(&target.path.join(" > "), bind)?;
         let mut args = Vec::new();
         for (_, source) in &sig.params {
             let arg = match source {
-                Source::Variant(i) => {
-                    let e = &sig.enums[*i];
-                    let wanted = props
-                        .get(&e.key)
-                        .and_then(|p| p.value.as_str().map(str::to_owned))
-                        .or_else(|| values.get(&e.key).cloned());
-                    let index = wanted
-                        .and_then(|w| e.variants.iter().position(|(_, o)| *o == w))
-                        .unwrap_or(e.default);
-                    Arg::Path(format!(
-                        "super::{}::{}::{}",
-                        sig.module, e.name, e.variants[index].0
-                    ))
-                }
-                Source::Prop(key, PropertyType::Text) => Arg::Str(
-                    props
-                        .get(key)
-                        .map(|p| &p.value)
-                        .or_else(|| sig.defaults.get(key))
-                        .and_then(Value::as_str)
-                        .unwrap_or_default()
-                        .to_owned(),
-                ),
-                Source::Prop(key, PropertyType::Boolean) => Arg::Bool(
-                    props
-                        .get(key)
-                        .map(|p| &p.value)
-                        .or_else(|| sig.defaults.get(key))
-                        .and_then(Value::as_bool)
-                        .unwrap_or(false),
-                ),
-                Source::Prop(key, kind) => {
-                    let slot = *kind == PropertyType::Slot;
-                    let target = if instance {
-                        find(node, &|n| {
-                            n.component_property_references
-                                .iter()
-                                .any(|(f, k)| f != "visible" && f != "characters" && k == key)
-                        })
-                    } else {
-                        None
-                    };
-                    match target {
-                        Some(t) => Arg::Markup(self.markup(node, t, slot, path, scope)?),
-                        None => Arg::Markup(Vec::new()),
-                    }
-                }
-                Source::BindText(_, def_ids, default) => {
-                    let text = if instance {
-                        find(node, &|n| ends_with_any(&n.id, def_ids))
-                            .and_then(|t| t.characters.clone())
-                    } else {
-                        None
-                    };
-                    Arg::Str(text.unwrap_or_else(|| default.clone()))
-                }
-                Source::BindSlot(_, def_ids) => {
-                    let target = if instance {
-                        find(node, &|n| ends_with_any(&n.id, def_ids))
-                    } else {
-                        None
-                    };
-                    match target {
-                        Some(t) => Arg::Markup(self.markup(node, t, true, path, scope)?),
-                        None => Arg::Markup(Vec::new()),
-                    }
-                }
                 Source::Attrs => Arg::Attrs(fields.clone()),
+                source => self.arg(target, &sig, source, scope)?,
             };
             args.push(arg);
         }
@@ -1184,34 +1085,188 @@ impl Lowerer<'_> {
         }))
     }
 
-    /// Lower `target` inside `instance` as a call argument: the node, or
-    /// its children when `children` is set.
+    /// One call argument for a property or a binding parameter.
+    fn arg(
+        &mut self,
+        target: &CallSite<'_>,
+        sig: &Sig,
+        source: &Source,
+        scope: &Scope,
+    ) -> Result<Arg> {
+        let value = |key: &str| -> Option<&Value> {
+            target
+                .instance
+                .then(|| target.node.component_properties.get(key).map(|p| &p.value))
+                .flatten()
+                .or_else(|| sig.defaults.get(key))
+        };
+        Ok(match source {
+            Source::Variant(i) => {
+                let e = &sig.enums[*i];
+                let wanted = target
+                    .instance
+                    .then(|| target.node.component_properties.get(&e.key))
+                    .flatten()
+                    .and_then(|p| p.value.as_str())
+                    .or_else(|| target.values.get(&e.key).map(String::as_str));
+                let index = wanted
+                    .and_then(|w| e.variants.iter().position(|(_, o)| o == w))
+                    .unwrap_or(e.default);
+                Arg::Path(format!(
+                    "super::{}::{}::{}",
+                    sig.module, e.name, e.variants[index].0
+                ))
+            }
+            Source::Prop(key, PropertyType::Text) => Arg::Str(
+                value(key)
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_owned(),
+            ),
+            Source::Prop(key, PropertyType::Boolean) => {
+                Arg::Bool(value(key).and_then(Value::as_bool).unwrap_or(false))
+            }
+            Source::Prop(key, kind) => {
+                let found = target.find(&|n| {
+                    n.component_property_references
+                        .iter()
+                        .any(|(f, k)| f != "visible" && f != "characters" && k == key)
+                });
+                let children = *kind == PropertyType::Slot;
+                Arg::Markup(self.markup(found, children, scope)?)
+            }
+            Source::BindText(_, def_ids, default) => Arg::Str(
+                target
+                    .find(&|n| ends_with_any(&n.id, def_ids))
+                    .and_then(|(t, _, _)| t.characters.clone())
+                    .unwrap_or_else(|| default.clone()),
+            ),
+            Source::BindSlot(_, def_ids) => {
+                let found = target.find(&|n| ends_with_any(&n.id, def_ids));
+                Arg::Markup(self.markup(found, true, scope)?)
+            }
+            Source::Attrs => Arg::Attrs(Vec::new()),
+        })
+    }
+
+    /// Lower a node found inside an instance as a call argument: the node,
+    /// or its children when `children` is set. `None` gives no items.
     fn markup(
         &mut self,
-        instance: &Node,
-        target: &Node,
+        found: Option<(&Node, &Node, Vec<String>)>,
         children: bool,
-        path: &[String],
         scope: &Scope,
     ) -> Result<Vec<Item>> {
-        let target_path = child_path(path, target);
+        let Some((node, parent, path)) = found else {
+            return Ok(Vec::new());
+        };
         let nodes: Vec<(&Node, &Node, Vec<String>)> = if children {
-            target
-                .children
+            node.children
                 .iter()
-                .map(|c| (target, c, child_path(&target_path, c)))
+                .map(|c| (c, node, child_path(&path, c)))
                 .collect()
         } else {
-            vec![(instance, target, target_path)]
+            vec![(node, parent, path)]
         };
         let mut items = Vec::new();
-        for (parent, node, p) in nodes {
-            if let Some(item) = self.node(node, &p, child_parent(parent, node), scope, false)? {
+        for (node, parent, path) in nodes {
+            let site = Site {
+                path: &path,
+                parent: child_parent(parent, node),
+                root: false,
+            };
+            if let Some(item) = self.node(node, site, scope)? {
                 items.push(item);
             }
         }
         Ok(items)
     }
+}
+
+/// Where a node sits while it is lowered.
+#[derive(Debug, Clone, Copy)]
+struct Site<'p> {
+    /// Layer names from the page down.
+    path: &'p [String],
+    /// How the parent places the node.
+    parent: Parent,
+    /// True for the root of a function.
+    root: bool,
+}
+
+impl Site<'_> {
+    fn text(&self) -> String {
+        self.path.join(" > ")
+    }
+}
+
+/// The node that a call stands for.
+struct CallSite<'n> {
+    node: &'n Node,
+    /// False for a definition placed in a frame: no instance values.
+    instance: bool,
+    /// Variant values from the main component name.
+    values: &'n BTreeMap<String, String>,
+    path: &'n [String],
+}
+
+impl<'n> CallSite<'n> {
+    /// The first descendant that passes `pred`, with its parent and path.
+    /// Always `None` for a definition, which has no instance values.
+    fn find(&self, pred: &dyn Fn(&Node) -> bool) -> Option<(&'n Node, &'n Node, Vec<String>)> {
+        if self.instance {
+            find_with_path(self.node, self.path, pred)
+        } else {
+            None
+        }
+    }
+}
+
+/// The first descendant of `node` that passes `pred`, with its parent and
+/// its layer path.
+fn find_with_path<'n>(
+    node: &'n Node,
+    path: &[String],
+    pred: &dyn Fn(&Node) -> bool,
+) -> Option<(&'n Node, &'n Node, Vec<String>)> {
+    node.children.iter().find_map(|child| {
+        let child_path = child_path(path, child);
+        if pred(child) {
+            Some((child, node, child_path))
+        } else {
+            find_with_path(child, &child_path, pred)
+        }
+    })
+}
+
+/// The `Attrs` fields that a binding on an instance sets.
+fn root_fields(path_text: &str, bind: Option<&Binding>) -> Result<Vec<(String, String)>> {
+    let Some(b) = bind else {
+        return Ok(Vec::new());
+    };
+    if b.tag.is_some() || b.slot.is_some() || b.text.is_some() {
+        return Err(binding_err(format!(
+            "[[bind]] {path_text}: a binding on a component instance sets only `id` and `attrs`; bind the component definition for tag, slot, or text"
+        )));
+    }
+    if let Some(name) = b.attrs.keys().find(|n| root_attr_field(n).is_none()) {
+        let allowed: Vec<&str> = ROOT_ATTRS.iter().map(|(h, _)| *h).collect();
+        return Err(binding_err(format!(
+            "[[bind]] {path_text}: {name:?} cannot pass to a component root; use one of {}",
+            allowed.join(", ")
+        )));
+    }
+    Ok(ROOT_ATTRS
+        .iter()
+        .filter_map(|(html, field)| {
+            let value = if *html == "id" {
+                b.id.clone()
+            } else {
+                b.attrs.get(*html).cloned()
+            };
+            value.map(|v| ((*field).to_owned(), v))
+        })
+        .collect())
 }
 
 /// True when `id` is one of `def_ids`, or an instance copy of one

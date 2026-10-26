@@ -9,7 +9,7 @@ repository = "https://github.com/autumn-foundation/autumn-plugin-figma"
 readme = "README.md"
 keywords = ["autumn", "figma", "maud", "htmx", "codegen"]
 categories = ["web-programming", "command-line-utilities", "development-tools"]
-exclude = [".github/", "docs/", "CLAUDE.md", "clippy.toml", "proptest-regressions/"]
+exclude = [".github/", "docs/", "examples/", "tests/golden/", "tests/fixtures/", "CLAUDE.md", "clippy.toml", "proptest-regressions/"]
 
 [[bin]]
 name = "autumn-figma"
