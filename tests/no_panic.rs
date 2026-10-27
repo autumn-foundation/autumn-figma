@@ -9,9 +9,9 @@
 
 use std::path::Path;
 
-use autumn_plugin_figma::config::Config;
-use autumn_plugin_figma::generate::generate_from;
-use autumn_plugin_figma::model::FileResponse;
+use autumn_figma::config::Config;
+use autumn_figma::generate::generate_from;
+use autumn_figma::model::FileResponse;
 use proptest::prelude::*;
 use serde_json::{Value, json};
 

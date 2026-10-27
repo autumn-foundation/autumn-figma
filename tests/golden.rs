@@ -8,8 +8,8 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use autumn_plugin_figma::config::Config;
-use autumn_plugin_figma::generate;
+use autumn_figma::config::Config;
+use autumn_figma::generate;
 
 fn fixture() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/todo")

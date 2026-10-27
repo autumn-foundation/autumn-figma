@@ -38,5 +38,8 @@ Option 3. The crate ships the `autumn-figma` binary and a library.
   networks are partial or not supported.
 - The Autumn CLI has no external-subcommand hook, so users run
   `autumn-figma`, not `autumn figma`. A hook is future work.
+- The crate and the repository are `autumn-figma`, not
+  `autumn-plugin-figma`. The `autumn-plugin-*` names are for runtime
+  `Plugin`s.
 - Option 2 stays useful for one-off screens. It is not repeatable, so it
   does not replace this tool.

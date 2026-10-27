@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Changed
+
+- The crate and the repository are now `autumn-figma`. The library is
+  `autumn_figma`. Install from
+  `https://github.com/autumn-foundation/autumn-figma`.
+
 ### Added
 
 - `autumn-figma` CLI: `init`, `pull`, `generate`, `generate --check`, `sync`.
@@ -21,6 +27,8 @@
   weights. Grid tracks, cells, and spans map to CSS grid.
 - `data-theme` on layers that set a variable mode.
 - `--quiet`, `FIGMA_OAUTH_TOKEN`, and TOML errors with line and column.
+- `docs/import-to-figma.md`: start a Figma file from an Autumn app, with a
+  `[tokens]` table that maps it back on a Professional plan.
 
 ### Security
 

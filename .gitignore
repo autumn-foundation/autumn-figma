@@ -23,7 +23,7 @@ rustc-ice-*.txt
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
 
-# autumn-plugin-figma
+# autumn-figma
 *.log
 proptest-regressions/
 *.orig

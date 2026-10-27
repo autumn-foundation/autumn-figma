@@ -1,4 +1,4 @@
-# autumn-plugin-figma
+# autumn-figma
 
 Turn a Figma design into Maud components for [Autumn](https://autumn-web.app)
 apps. Add htmx behavior in one config file. Keep the design and the code in
@@ -22,7 +22,7 @@ Figma file ──pull──▶ figma/snapshot.json ──generate──▶ src/f
 ## Quickstart
 
 ```sh
-cargo install --locked --git https://github.com/autumn-foundation/autumn-plugin-figma
+cargo install --locked --git https://github.com/autumn-foundation/autumn-figma
 
 cd my-autumn-app
 autumn-figma init --file-key "https://www.figma.com/design/AbC123/Todo"
@@ -239,7 +239,7 @@ Commit the snapshot and the generated files. Then a design change shows as
 a diff in review, and CI can check it with no token:
 
 ```yaml
-- run: cargo install --locked --git https://github.com/autumn-foundation/autumn-plugin-figma
+- run: cargo install --locked --git https://github.com/autumn-foundation/autumn-figma
 - run: autumn-figma generate --check
 ```
 
@@ -262,6 +262,12 @@ the generated header. Put your own code outside `out_dir`.
 For a single screen that you do not need to keep in sync, the Figma MCP
 server and an agent work too: `get_design_context` gives a reference, and
 the agent ports it to Maud. For a design that changes, use this tool.
+
+## Start a Figma file from an app
+
+To go the other way once, from an Autumn app to a new Figma file, see
+[Import an Autumn app into Figma](docs/import-to-figma.md). It works on a
+Professional plan.
 
 ## License
 
