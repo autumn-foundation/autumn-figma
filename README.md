@@ -37,7 +37,7 @@ Turn on Autumn's `htmx` feature. Then Autumn serves htmx and its CSRF
 helper:
 
 ```toml
-autumn-web = { version = "0.8", features = ["htmx"] }
+autumn-web = { version = "0.9", features = ["htmx"] }
 maud = "0.27"
 ```
 
