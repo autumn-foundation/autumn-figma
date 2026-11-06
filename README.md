@@ -43,7 +43,8 @@ maud = "0.27"
 
 Mount the module, link the CSS, and call the components:
 
-```rust
+```rust,ignore
+// From `examples/todo-app/src/main.rs`.
 mod figma;
 
 use autumn_web::prelude::*;
@@ -54,7 +55,7 @@ use figma::components::todo_row;
 fn layout(csrf: Option<&CsrfToken>, content: Markup) -> Markup {
     html! {
         (maud::DOCTYPE)
-        html {
+        html lang="en" {
             head {
                 @if let Some(csrf) = csrf {
                     meta name="csrf-token" content=(csrf.token());
@@ -69,24 +70,37 @@ fn layout(csrf: Option<&CsrfToken>, content: Markup) -> Markup {
     }
 }
 
+// One row of the generated component, with the attributes that htmx reads.
+fn row(todo: &Todo) -> Markup {
+    let (id, title, done) = todo;
+    let dom_id = format!("todo-{id}");
+    let delete = format!("/todos/{id}");
+    todo_row(
+        *done,
+        title,
+        &Attrs {
+            id: Some(&dom_id),
+            hx_delete: Some(&delete),
+            hx_swap: Some("outerHTML"),
+            hx_trigger: Some("dblclick"),
+            ..Attrs::NONE
+        },
+    )
+}
+
 #[get("/")]
 #[public]
 async fn index(csrf: Option<CsrfToken>) -> Markup {
+    let todos = todos();
     let rows = html! {
-        (todo_row(false, "Buy milk", &Attrs::NONE))
+        @for todo in &todos {
+            (row(todo))
+        }
     };
-    layout(csrf.as_ref(), figma::screens::todos(rows, "1 item left"))
-}
-
-/// An htmx fragment: the new row for `hx-swap="beforeend"`.
-#[post("/todos")]
-#[public]
-async fn create() -> Markup {
-    todo_row(false, "New todo", &Attrs {
-        hx_delete: Some("/todos/7"),
-        hx_swap: Some("outerHTML"),
-        ..Attrs::NONE
-    })
+    layout(
+        csrf.as_ref(),
+        figma::screens::todos(rows, &remaining(&todos)),
+    )
 }
 ```
 

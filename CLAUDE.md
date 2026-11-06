@@ -47,6 +47,8 @@ the network.
 
 ## Rules
 
+- README Rust snippets are doctests. Make them compile; use `no_run`, not `ignore`.
+  `tests/doc_snippets.rs` checks the TOML snippets and the version pins in the docs.
 - Output must be deterministic: `BTreeMap` only, no time, no `HashMap`
   iteration. `tests/golden.rs` and the property tests guard this.
 - Generated code must compile under pedantic + nursery clippy.
