@@ -20,6 +20,8 @@ jobs:
         run: cargo test --locked --all-targets --all-features
         env:
           TMPDIR: ${{ runner.temp }}
+      - name: README and API doc examples
+        run: cargo test --locked --doc --all-features
       - name: example is in sync with its snapshot
         run: cargo run --locked -- --config examples/todo-app/figma.toml generate --check
 

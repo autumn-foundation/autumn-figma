@@ -66,3 +66,8 @@ pub use error::{Error, ErrorKind, Result};
 
 #[cfg(test)]
 mod test_support;
+
+/// Compiles the Rust snippets of the README as doctests.
+#[cfg(doctest)]
+#[doc = include_str!("../README.md")]
+pub struct ReadmeDoctests;
