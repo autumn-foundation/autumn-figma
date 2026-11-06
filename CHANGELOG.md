@@ -4,6 +4,8 @@
 
 ### Changed
 
+- The example app and the README target `autumn-web` 0.10. The generated
+  code needs no change.
 - The crate and the repository are now `autumn-figma`. The library is
   `autumn_figma`. Install from
   `https://github.com/autumn-foundation/autumn-figma`.
